@@ -73,7 +73,7 @@ func(ch *Chord) CheckPredecessor() {
 }
 
 // PrecedingNode searches the local table for the highest predecessor of id
-func(ch *Chord) PrecedingNode(id uint64) *Node {
+func(ch *Chord) PrecedingNode(id uint64) Node {
 	panic("todo")
 }
 
