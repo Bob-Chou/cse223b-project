@@ -2,6 +2,7 @@ package ring
 
 import (
 	"chord/db"
+	"sync"
 )
 
 // dummy var to check if Chord implements NodeEntry interface
@@ -14,10 +15,24 @@ var _ db.Storage = new(Chord)
 type Chord struct {
 	// basic information
 	NodeInfo
+	// mutex for fingers list
+	fingersMtx sync.RWMutex
 	// fingers list
-	fingers []*Node
+	fingers []Node
 	// r consecutive chord node for chain replication
-	chain []*Node
+	chain []Node
+}
+
+func(ch *Chord) SetFinger(i int, n Node) {
+	ch.fingersMtx.Lock()
+	defer ch.fingersMtx.Unlock()
+	ch.fingers[i] = n
+}
+
+func(ch *Chord) GetFinger(i int) Node {
+	ch.fingersMtx.RLock()
+	defer ch.fingersMtx.RUnlock()
+	return ch.fingers[i]
 }
 
 // GetID wraps Node.GetID
