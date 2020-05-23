@@ -21,6 +21,10 @@ var (
 func main() {
 	// parse command line
 	flag.Parse()
+	// check the number of flag options
+	if flag.NFlag() != 1 {
+		flag.Usage()
+	}
 
 	// check if the number of back-ends is valid
 	if *nback > MaxBacks {
