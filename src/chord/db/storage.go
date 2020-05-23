@@ -41,16 +41,16 @@ type Store struct {
 	strLock   sync.Mutex
 }
 
-func (self *Store) Get(key string, value *string) error {
+func (self *Store) Get(k string, v *string) error {
 	self.strLock.Lock()
 	defer self.strLock.Unlock()
 
-	*value = self.strs[key]
+	*v = self.strs[k]
 
 	return nil
 }
 
-func (self *Store) Set(kv *KV, ok *bool) error {
+func (self *Store) Set(kv KV, ok *bool) error {
 	self.strLock.Lock()
 	defer self.strLock.Unlock()
 
@@ -65,7 +65,7 @@ func (self *Store) Set(kv *KV, ok *bool) error {
 	return nil
 }
 
-func (self *Store) Keys(p *Pattern, r *List) error {
+func (self *Store) Keys(p Pattern, list *List) error {
 	self.strLock.Lock()
 	defer self.strLock.Unlock()
 
@@ -77,7 +77,7 @@ func (self *Store) Keys(p *Pattern, r *List) error {
 		}
 	}
 
-	r.L = ret
+	list.L = ret
 
 	return nil
 }
