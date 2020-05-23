@@ -14,11 +14,6 @@ const (
 	DefaultPath = "backs.rc"
 )
 
-var (
-	//frc       = flag.String("rc", trib.DefaultRCPath, "bin storage config file")
-	//verbose   = flag.Bool("v", false, "verbose logging")
-	//readyAddr = flag.String("ready", "", "ready notification address")
-)
 func noError(e error) {
 	if e != nil {
 		log.Printf("error is ", e)
@@ -29,10 +24,6 @@ func run(addr string) {
 		Addr: addr,
 		Store: db.NewStore(),
 	}
-
-	//if *readyAddr != "" {
-	//	backConfig.Ready = utility.Chan(*readyAddr, backConfig.Addr)
-	//}
 
 	log.Printf("back-end serving on %s", backConfig.Addr)
 	noError(client.ServeBack(&backConfig))
