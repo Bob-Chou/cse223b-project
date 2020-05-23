@@ -41,6 +41,10 @@ type Store struct {
 	strLock   sync.Mutex
 }
 
+func NewStore() *Store {
+	return &Store{strs:make(map[string]string)}
+}
+
 func (self *Store) Get(k string, v *string) error {
 	self.strLock.Lock()
 	defer self.strLock.Unlock()
