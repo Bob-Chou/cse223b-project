@@ -21,6 +21,9 @@ type Chord struct {
 	fingers []Node
 	// r consecutive chord node for chain replication
 	chain []Node
+	//predecessor and successor
+	predecessor Node
+	successor Node
 }
 
 func(ch *Chord) SetFinger(i int, n Node) {
@@ -47,18 +50,24 @@ func(ch *Chord) GetIP() string {
 
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
-	panic("todo")
+	ch.predecessor = nil
+	ch.successor = ch.ID
 }
 
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node *NodeEntry) {
-	panic("todo")
+	ch.predecessor = nil
+    ch.successor = node.FindSuccessor(ch.ID)
 }
 
 // Stabilize is called periodically to verify n's immediate successor and tell
 // the successor about n.
 func(ch *Chord) Stabilize() {
-	panic("todo")
+	x:=ch.successor.predecessor
+	if x.ID > ch.ID && x.ID < ch.successor.ID{
+		ch.successor = x
+	}
+    ch.successor.Notify(ch)
 }
 
 // FixFingers is called periodically to refresh finger table entries
@@ -94,7 +103,10 @@ func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
 
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
-	panic("todo")
+	if (ch.predecessor == nil)||((node.ID > ch.predecessor)&&(node.ID<ch.ID)){
+		ch.predecessor = node
+	}
+	return nil
 }
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
