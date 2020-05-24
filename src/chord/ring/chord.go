@@ -2,6 +2,7 @@ package ring
 
 import (
 	"chord/db"
+	"chord/hash"
 	"fmt"
 	"log"
 	"net"
@@ -70,16 +71,20 @@ func(ch *Chord) Stabilize() {
 }
 
 // FixFingers is called periodically to refresh finger table entries
-func(ch *Chord) FixFingers() {
-	for i := 1; i < len(ch.fingers); i++ {
-		var found NodeInfo
-		if e := ch.FindSuccessor(ch.ID+uint64(2^(i-1)), &found); e != nil {
-			panic(fmt.Errorf("encounter error when fix fingers: %v", e))
-		}
+func(ch *Chord) FixFingers(i int) {
+	if i <= 0 || i >= len(ch.fingers) {
+		panic(fmt.Sprintf("[%v] FixFingers index error", ch.ID))
+	}
 
-		if ch.GetFinger(i) == nil || found.ID != ch.GetFinger(i).GetID() {
-			ch.SetFinger(i, NewChordClient(found.IP, found.ID))
-		}
+	var found NodeInfo
+	if e := ch.FindSuccessor(ch.GetID()+uint64(1<<(i-1)), &found); e != nil {
+		// TODO: handle nodes leaving case here
+		panic(fmt.Errorf("[%v] encounter error when fix fingers: %v", ch.ID, e))
+	}
+
+	if ch.GetFinger(i) == nil || found.ID != ch.GetFinger(i).GetID() {
+		log.Printf("[%v] has new finger[%v] %v", ch.GetID(), i, found.ID)
+		ch.SetFinger(i, NewChordClient(found.IP, found.ID))
 	}
 }
 
@@ -89,22 +94,23 @@ func(ch *Chord) CheckPredecessor() {
 	if ch.GetFinger(0) == nil {
 		return
 	}
-	p := ch.GetFinger(0)
+	pre := ch.GetFinger(0)
 	var nc NodeInfo
-	if p.FindSuccessor(p.GetID(), &nc) != nil {
+	if e := pre.FindSuccessor(pre.GetID(), &nc); e != nil {
 		// TODO: Add node leave logic here
-		log.Printf("%v (id %v) dies", p.GetIP(), p.GetID())
+		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
 		ch.SetFinger(0, nil)
 	}
 }
 
 // PrecedingNode searches the local table for the highest predecessor of id
-func (ch *Chord) PrecedingNode(id uint64) Node {
-	id = id % uint64(2^(len(ch.fingers)-1))
+func(ch *Chord) PrecedingNode(id uint64) Node {
+	id = id % uint64(1<<(len(ch.fingers)-1))
 
 	for i := len(ch.fingers) - 1; i > 0; i-- {
-		if Between(id, ch.ID, ch.GetFinger(i).GetID()) {
-			return ch.GetFinger(i)
+		finger := ch.GetFinger(i)
+		if finger != nil && In(finger.GetID(), ch.GetID(), id) {
+			return finger
 		}
 	}
 
@@ -133,35 +139,49 @@ func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
 func(ch *Chord) FindSuccessor(id uint64, found *NodeInfo) error {
-	id = id % uint64(2^(len(ch.fingers)-1))
+	id = id % (1 << hash.MaxHashBits)
+	//log.Printf("[%v] start to find successor of %v", ch.ID, id)
 
-	successor := ch.GetFinger(1)
-	if Between(id, ch.ID, successor.GetID()) {
+	suc := ch.GetFinger(1)
+	if RIn(id, ch.GetID(), suc.GetID()) {
 		*found = NodeInfo{
-			IP: successor.GetIP(),
-			ID: successor.GetID(),
+			IP: suc.GetIP(),
+			ID: suc.GetID(),
 		}
+		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
 		return nil
 	}
 
-	return ch.PrecedingNode(id).FindSuccessor(id, found)
+	redirect := ch.PrecedingNode(id)
+	if redirect == nil {
+		return ErrNotReady
+	}
+
+	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
+	var ans NodeInfo
+	if e := redirect.FindSuccessor(id, &ans); e !=nil {
+		return e
+	}
+	*found = ans
+
+	return nil
 }
 
 // Next wraps the RPC interface of NodeEntry.Next
 func(ch *Chord) Next(id uint64, found *NodeInfo) error {
 
-	if id != ch.ID {
-		return fmt.Errorf("wrong node id")
+	if id != ch.GetID() {
+		return ErrWrongID
 	}
 
 	if ch.GetFinger(1) == nil {
-		return fmt.Errorf("nil successor")
+		return ErrNotFound
 	}
 
-	successor := ch.GetFinger(1)
+	suc := ch.GetFinger(1)
 	*found = NodeInfo{
-		IP: successor.GetIP(),
-		ID: successor.GetID(),
+		IP: suc.GetIP(),
+		ID: suc.GetID(),
 	}
 
 	return nil
@@ -170,18 +190,19 @@ func(ch *Chord) Next(id uint64, found *NodeInfo) error {
 // Next wraps the RPC interface of NodeEntry.Previous
 func(ch *Chord) Previous(id uint64, found *NodeInfo) error {
 
-	if id != ch.ID {
-		return fmt.Errorf("wrong node id")
+	if id != ch.GetID() {
+		log.Printf("[%v] wrong id %v", ch.ID, id)
+		return ErrWrongID
 	}
 
 	if ch.GetFinger(0) == nil {
-		return fmt.Errorf("nil predecessor")
+		return ErrNotFound
 	}
 
-	successor := ch.GetFinger(0)
+	pre := ch.GetFinger(0)
 	*found = NodeInfo{
-		IP: successor.GetIP(),
-		ID: successor.GetID(),
+		IP: pre.GetIP(),
+		ID: pre.GetID(),
 	}
 
 	return nil
@@ -195,20 +216,20 @@ func(ch *Chord) Init() error {
 
 // Serve is a blocking call to serve, it never returns.  It also returns the
 // encountered error if any
-func(ch *Chord) Serve() error {
+func(ch *Chord) Serve(ready chan<- bool) error {
 	catch := make(chan error)
 	quit := make(chan bool)
-
+	done := make(chan bool, 1)
 	// Chord RPC services
 	go func() {
-		chordRPC := NodeEntry(ch)
-
+		chordServer := &ChordServer{ch}
 		addrSplit := strings.Split(ch.IP, ":")
 		port := addrSplit[len(addrSplit)-1]
 
-		e := rpc.RegisterName(port+"/NodeEntry", chordRPC)
+		e := rpc.RegisterName(port+"/NodeEntry", chordServer)
 		if e != nil {
 			catch <- e
+			return
 		}
 
 		l, e := net.Listen("tcp", ch.IP)
@@ -217,6 +238,8 @@ func(ch *Chord) Serve() error {
 			catch <- e
 			return
 		}
+
+		done <- true
 
 		for {
 			conn, e := l.Accept()
@@ -229,25 +252,82 @@ func(ch *Chord) Serve() error {
 	}()
 
 	go func() {
-		<-time.After(time.Second)
-		ch.FixFingers()
+		ticker := time.NewTicker(100 * time.Millisecond)
+		next := 1
+		for {
+			next = (next-1)%hash.MaxHashBits + 1
+			select {
+			case <-quit:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				ch.FixFingers(next)
+			}
+			next++
+		}
 	}()
 
 	go func() {
-		<-time.After(time.Second)
-		ch.Stabilize()
+		ticker := time.NewTicker(time.Second)
+		for {
+			select {
+			case <-quit:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				ch.Stabilize()
+			}
+		}
 	}()
 
+	go func() {
+		ticker := time.NewTicker(time.Second)
+		for {
+			select {
+			case <-quit:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				ch.CheckPredecessor()
+			}
+		}
+	}()
+
+	<-done
+	log.Printf("[%v] service ready", ch.ID)
+	ready <- true
 	e := <-catch
 	close(quit)
 
 	return e
 }
 
-func Between(id, selfID, succID uint64) bool {
-	if succID > selfID {
-		return id <= succID && id > selfID
+// NewChord create a new chord node and return the pointer to it
+func NewChord(ip string) *Chord {
+	id := hash.EncodeKey(ip)
+	ch := Chord{
+		NodeInfo:   NodeInfo{ip, id},
+		fingersMtx: sync.RWMutex{},
+		fingers:    make([]Node, hash.MaxHashBits+1),
+		chain:      make([]Node, 3),
+	}
+	return &ch
+}
+
+// In determines whether a given ID locates in (nid1, nid2)
+func In(id, nid1, nid2 uint64) bool {
+	if nid2 > nid1 {
+		return id < nid2 && id > nid1
 	} else {
-		return id <= succID || id > selfID
+		return id < nid2 || id > nid1
+	}
+}
+
+// RIn determines whether a given ID locates in (nid1, nid2]
+func RIn(id, nid1, nid2 uint64) bool {
+	if nid2 > nid1 {
+		return id <= nid2 && id > nid1
+	} else {
+		return id <= nid2 || id > nid1
 	}
 }

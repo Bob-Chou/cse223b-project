@@ -6,15 +6,13 @@ import (
 	"sync"
 )
 
-var _ NodeEntry = new(ChordClient)
-
 type ChordClient struct {
 	NodeInfo
 	conn     *rpc.Client
 	connLock sync.Mutex
 }
 
-func (c *ChordClient) dial() error {
+func(c *ChordClient) dial() error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.conn == nil {
@@ -27,7 +25,7 @@ func (c *ChordClient) dial() error {
 	return nil
 }
 
-func (c *ChordClient) reset() {
+func(c *ChordClient) reset() {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	if c.conn != nil {
@@ -36,14 +34,14 @@ func (c *ChordClient) reset() {
 	c.conn = nil
 }
 
-func (c *ChordClient) call(call string, args interface{}, ret interface{}) error {
+func(c *ChordClient) call(call string, args interface{}, ret interface{}) error {
 	c.connLock.Lock()
 	defer c.connLock.Unlock()
 	e := c.conn.Call(call, args, ret)
 	return e
 }
 
-func (c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
+func(c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
 	if e := c.dial(); e != nil {
 		return e
 	}
@@ -63,6 +61,7 @@ func (c *ChordClient) rpc(name string, args interface{}, ret interface{}) error 
 
 	return nil
 }
+
 // GetID wraps Node.GetID
 func(c *ChordClient) GetID() uint64 {
 	return c.ID
@@ -113,3 +112,30 @@ func NewChordClient(ip string, id uint64) *ChordClient {
 		connLock: sync.Mutex{},
 	}
 }
+
+type ChordServer struct {
+	entry *Chord
+}
+
+// FindSuccessor is called to find the successor of a given id
+func(c *ChordServer) FindSuccessor(id uint64, found *NodeInfo) error {
+	return c.entry.FindSuccessor(id, found)
+}
+
+// Notify is called when the given node thinks it might be our predecessor
+func(c *ChordServer) Notify(node *NodeInfo, ok *bool) error {
+	return c.entry.Notify(node, ok)
+}
+
+// Next returns the successor, or returns error if has no successor
+func(c *ChordServer) Next(id uint64, next *NodeInfo) error {
+	return c.entry.Next(id, next)
+}
+
+// Previous returns the predecessor, or returns error if has no predecessor
+func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
+	return c.entry.Previous(id, prev)
+}
+
+var _ NodeEntry = new(ChordClient)
+var _ NodeEntry = new(ChordServer)
