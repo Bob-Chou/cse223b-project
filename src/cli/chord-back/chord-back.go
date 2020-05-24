@@ -53,4 +53,6 @@ func main() {
 			go run(rc.Backs[i])
 		}
 	}
+	select {}
+
 }
