@@ -1,6 +1,9 @@
-.PHONY: all rall
+.PHONY: all rall test
 all:
 	go install ./...
 
 rall:
 	go build -a ./...
+
+test:
+	go test ./...
