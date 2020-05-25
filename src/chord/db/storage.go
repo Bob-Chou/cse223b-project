@@ -6,18 +6,18 @@ import (
 )
 
 type KV struct {
-	k string
-	v string
+	K string
+	V string
 }
 
 type Pattern struct {
-	prefix string
-	suffix string
+	Prefix string
+	Suffix string
 }
 
 func (p *Pattern) Match(k string) bool {
-	ret := strings.HasPrefix(k, p.prefix)
-	ret = ret && strings.HasSuffix(k, p.suffix)
+	ret := strings.HasPrefix(k, p.Prefix)
+	ret = ret && strings.HasSuffix(k, p.Suffix)
 	return ret
 }
 
@@ -58,10 +58,10 @@ func (self *Store) Set(kv KV, ok *bool) error {
 	self.strLock.Lock()
 	defer self.strLock.Unlock()
 
-	if kv.v != "" {
-		self.strs[kv.k] = kv.v
+	if kv.V != "" {
+		self.strs[kv.K] = kv.V
 	} else {
-		delete(self.strs, kv.k)
+		delete(self.strs, kv.K)
 	}
 
 	*ok = true
