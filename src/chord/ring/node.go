@@ -13,6 +13,10 @@ type NodeEntry interface {
 	FindSuccessor(id uint64, found *NodeInfo) error
 	// Notify is called when the given node thinks it might be our predecessor
 	Notify(node *NodeInfo, ok *bool) error
+	// Next returns the successor, or returns error if has no successor
+	Next(id uint64, next *NodeInfo) error
+	// Previous returns the predecessor, or returns error if has no predecessor
+	Previous(id uint64, next *NodeInfo) error
 }
 
 // Node is used as the entity of a remote chord node
