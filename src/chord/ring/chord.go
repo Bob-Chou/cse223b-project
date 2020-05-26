@@ -25,9 +25,9 @@ type Chord struct {
 	// basic information
 	NodeInfo
 	// successor
-	successor Node
+	successor ChordClient
 	// predecessor
-	predecessor Node
+	predecessor ChordClient
 	// mutex for fingers list
 	fingersMtx sync.RWMutex
 	// fingers list
@@ -60,18 +60,29 @@ func(ch *Chord) GetIP() string {
 
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
-	panic("todo")
+	ch.predecessor = nil
+	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
 }
 
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node *NodeEntry) {
-	panic("todo")
+	ch.predecessor = nil
+	var found NodeInfo
+    node.FindSuccessor(ch.ID, &found)
+    ch.successor = NewChordClient(found.IP,found.ID)
 }
 
 // Stabilize is called periodically to verify n's immediate successor and tell
 // the successor about n.
 func(ch *Chord) Stabilize() {
-	panic("todo")
+	var succ,x NodeInfo
+	ch.Next(ch.ID,&succ)
+	ch.Previous(succ.ID,&x)
+	if In(x.ID,ch.ID,succ.ID){
+		ch.successor = NewChordClient(x.IP,x.ID)
+	}
+	var ok bool
+    ch.successor.Notify(&NodeInfo{ch.IP, ch.ID},&ok)
 }
 
 // FixFingers is called periodically to refresh finger table entries
@@ -138,7 +149,10 @@ func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
 
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
-	panic("todo")
+	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
+		ch.predecessor = NewChordClient(node.IP, node.ID)
+	}
+	return nil
 }
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
