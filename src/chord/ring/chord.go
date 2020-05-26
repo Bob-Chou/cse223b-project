@@ -68,7 +68,7 @@ func(ch *Chord) Create() {
 func(ch *Chord) Join(node *NodeEntry) {
 	ch.predecessor = nil
 	var found NodeInfo
-    node.Next(ch.ID,&found)
+    node.FindSuccessor(ch.ID, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
 }
 
@@ -82,7 +82,7 @@ func(ch *Chord) Stabilize() {
 		ch.successor = NewChordClient(x.IP,x.ID)
 	}
 	var ok bool
-    ch.successor.Notify(ch,&ok)
+    ch.successor.Notify(&NodeInfo{ch.IP, ch.ID},&ok)
 }
 
 // FixFingers is called periodically to refresh finger table entries
