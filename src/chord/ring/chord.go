@@ -24,6 +24,10 @@ var _ db.Storage = new(Chord)
 type Chord struct {
 	// basic information
 	NodeInfo
+	// successor
+	successor Node
+	// predecessor
+	predecessor Node
 	// mutex for fingers list
 	fingersMtx sync.RWMutex
 	// fingers list
@@ -72,12 +76,12 @@ func(ch *Chord) Stabilize() {
 
 // FixFingers is called periodically to refresh finger table entries
 func(ch *Chord) FixFingers(i int) {
-	if i <= 0 || i >= len(ch.fingers) {
+	if i < 0 || i >= len(ch.fingers) {
 		panic(fmt.Sprintf("[%v] FixFingers index error", ch.ID))
 	}
 
 	var found NodeInfo
-	if e := ch.FindSuccessor(ch.GetID()+uint64(1<<(i-1)), &found); e != nil {
+	if e := ch.FindSuccessor(ch.GetID()+uint64(1<<i), &found); e != nil {
 		// TODO: handle nodes leaving case here
 		panic(fmt.Errorf("[%v] encounter error when fix fingers: %v", ch.ID, e))
 	}
@@ -91,23 +95,23 @@ func(ch *Chord) FixFingers(i int) {
 // CheckPredecessor is called periodically to check whether predecessor has
 // failed
 func(ch *Chord) CheckPredecessor() {
-	if ch.GetFinger(0) == nil {
+	if ch.predecessor == nil {
 		return
 	}
-	pre := ch.GetFinger(0)
+	pre := ch.predecessor
 	var nc NodeInfo
 	if e := pre.FindSuccessor(pre.GetID(), &nc); e != nil {
 		// TODO: Add node leave logic here
 		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
-		ch.SetFinger(0, nil)
+		ch.predecessor = nil
 	}
 }
 
 // PrecedingNode searches the local table for the highest predecessor of id
 func(ch *Chord) PrecedingNode(id uint64) Node {
-	id = id % uint64(1<<(len(ch.fingers)-1))
+	id = id % uint64(1<<len(ch.fingers))
 
-	for i := len(ch.fingers) - 1; i > 0; i-- {
+	for i := len(ch.fingers) - 1; i >= 0; i-- {
 		finger := ch.GetFinger(i)
 		if finger != nil && In(finger.GetID(), ch.GetID(), id) {
 			return finger
@@ -139,14 +143,13 @@ func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
 func(ch *Chord) FindSuccessor(id uint64, found *NodeInfo) error {
-	id = id % (1 << hash.MaxHashBits)
+	id = id % (1 << len(ch.fingers))
 	//log.Printf("[%v] start to find successor of %v", ch.ID, id)
 
-	suc := ch.GetFinger(1)
-	if RIn(id, ch.GetID(), suc.GetID()) {
+	if RIn(id, ch.GetID(), ch.successor.GetID()) {
 		*found = NodeInfo{
-			IP: suc.GetIP(),
-			ID: suc.GetID(),
+			IP: ch.successor.GetIP(),
+			ID: ch.successor.GetID(),
 		}
 		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
 		return nil
@@ -174,14 +177,13 @@ func(ch *Chord) Next(id uint64, found *NodeInfo) error {
 		return ErrWrongID
 	}
 
-	if ch.GetFinger(1) == nil {
+	if ch.successor == nil {
 		return ErrNotFound
 	}
 
-	suc := ch.GetFinger(1)
 	*found = NodeInfo{
-		IP: suc.GetIP(),
-		ID: suc.GetID(),
+		IP: ch.successor.GetIP(),
+		ID: ch.successor.GetID(),
 	}
 
 	return nil
@@ -195,11 +197,11 @@ func(ch *Chord) Previous(id uint64, found *NodeInfo) error {
 		return ErrWrongID
 	}
 
-	if ch.GetFinger(0) == nil {
+	if ch.predecessor == nil {
 		return ErrNotFound
 	}
 
-	pre := ch.GetFinger(0)
+	pre := ch.predecessor
 	*found = NodeInfo{
 		IP: pre.GetIP(),
 		ID: pre.GetID(),
@@ -255,7 +257,7 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		next := 1
 		for {
-			next = (next-1)%hash.MaxHashBits + 1
+			next = next%len(ch.fingers)
 			select {
 			case <-quit:
 				ticker.Stop()
@@ -308,7 +310,7 @@ func NewChord(ip string) *Chord {
 	ch := Chord{
 		NodeInfo:   NodeInfo{ip, id},
 		fingersMtx: sync.RWMutex{},
-		fingers:    make([]Node, hash.MaxHashBits+1),
+		fingers:    make([]Node, hash.MaxHashBits),
 		chain:      make([]Node, 3),
 	}
 	return &ch
