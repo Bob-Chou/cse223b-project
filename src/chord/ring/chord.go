@@ -25,18 +25,15 @@ type Chord struct {
 	// basic information
 	NodeInfo
 	// successor
-	successor Node
+	successor ChordClient
 	// predecessor
-	predecessor Node
+	predecessor ChordClient
 	// mutex for fingers list
 	fingersMtx sync.RWMutex
 	// fingers list
 	fingers []Node
 	// r consecutive chord node for chain replication
 	chain []Node
-	//predecessor and successor
-	predecessor Node
-	successor Node
 }
 
 func(ch *Chord) SetFinger(i int, n Node) {
@@ -64,23 +61,28 @@ func(ch *Chord) GetIP() string {
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
 	ch.predecessor = nil
-	ch.successor = ch.ID
+	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
 }
 
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node *NodeEntry) {
 	ch.predecessor = nil
-    ch.successor = node.FindSuccessor(ch.ID)
+	var found NodeInfo
+    node.Next(ch.ID,&found)
+    ch.successor = NewChordClient(found.IP,found.ID)
 }
 
 // Stabilize is called periodically to verify n's immediate successor and tell
 // the successor about n.
 func(ch *Chord) Stabilize() {
-	x:=ch.successor.predecessor
-	if x.ID > ch.ID && x.ID < ch.successor.ID{
-		ch.successor = x
+	var succ,x NodeInfo
+	ch.Next(ch.ID,&succ)
+	ch.Previous(succ.ID,&x)
+	if In(x.ID,ch.ID,succ.ID){
+		ch.successor = NewChordClient(x.IP,x.ID)
 	}
-    ch.successor.Notify(ch)
+	var ok bool
+    ch.successor.Notify(ch,&ok)
 }
 
 // FixFingers is called periodically to refresh finger table entries
@@ -147,8 +149,8 @@ func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
 
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
-	if (ch.predecessor == nil)||((node.ID > ch.predecessor)&&(node.ID<ch.ID)){
-		ch.predecessor = node
+	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
+		ch.predecessor = NewChordClient(node.IP, node.ID)
 	}
 	return nil
 }
