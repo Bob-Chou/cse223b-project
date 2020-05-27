@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/rpc"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -25,27 +24,13 @@ type Chord struct {
 	// basic information
 	NodeInfo
 	// successor
-	successor ChordClient
+	successor Node
 	// predecessor
-	predecessor ChordClient
-	// mutex for fingers list
-	fingersMtx sync.RWMutex
+	predecessor Node
 	// fingers list
 	fingers []Node
 	// r consecutive chord node for chain replication
 	chain []Node
-}
-
-func(ch *Chord) SetFinger(i int, n Node) {
-	ch.fingersMtx.Lock()
-	defer ch.fingersMtx.Unlock()
-	ch.fingers[i] = n
-}
-
-func(ch *Chord) GetFinger(i int) Node {
-	ch.fingersMtx.RLock()
-	defer ch.fingersMtx.RUnlock()
-	return ch.fingers[i]
 }
 
 // GetID wraps Node.GetID
@@ -65,7 +50,7 @@ func(ch *Chord) Create() {
 }
 
 // Join joins a Chord ring containing the given node
-func(ch *Chord) Join(node *NodeEntry) {
+func(ch *Chord) Join(node Node) {
 	ch.predecessor = nil
 	var found NodeInfo
     node.FindSuccessor(ch.ID, &found)
@@ -75,11 +60,14 @@ func(ch *Chord) Join(node *NodeEntry) {
 // Stabilize is called periodically to verify n's immediate successor and tell
 // the successor about n.
 func(ch *Chord) Stabilize() {
-	var succ,x NodeInfo
-	ch.Next(ch.ID,&succ)
-	ch.Previous(succ.ID,&x)
-	if In(x.ID,ch.ID,succ.ID){
-		ch.successor = NewChordClient(x.IP,x.ID)
+	var x NodeInfo
+	if e := ch.successor.Previous(ch.successor.GetID(), &x); e == nil {
+		if In(x.ID,ch.ID,ch.successor.GetID()){
+			log.Printf("[%v] sets successor %v", ch.GetID(), x.ID)
+			ch.successor = NewChordClient(x.IP,x.ID)
+		}
+	} else if !ErrNotFound.Equals(e) {
+		panic(e)
 	}
 	var ok bool
     ch.successor.Notify(&NodeInfo{ch.IP, ch.ID},&ok)
@@ -97,9 +85,9 @@ func(ch *Chord) FixFingers(i int) {
 		panic(fmt.Errorf("[%v] encounter error when fix fingers: %v", ch.ID, e))
 	}
 
-	if ch.GetFinger(i) == nil || found.ID != ch.GetFinger(i).GetID() {
+	if ch.fingers[i] == nil || found.ID != ch.fingers[i].GetID() {
 		log.Printf("[%v] has new finger[%v] %v", ch.GetID(), i, found.ID)
-		ch.SetFinger(i, NewChordClient(found.IP, found.ID))
+		ch.fingers[i] = NewChordClient(found.IP, found.ID)
 	}
 }
 
@@ -122,11 +110,15 @@ func(ch *Chord) CheckPredecessor() {
 func(ch *Chord) PrecedingNode(id uint64) Node {
 	id = id % uint64(1<<len(ch.fingers))
 
-	for i := len(ch.fingers) - 1; i >= 0; i-- {
-		finger := ch.GetFinger(i)
+	for i := len(ch.fingers) - 1; i > 0; i-- {
+		finger := ch.fingers[i]
 		if finger != nil && In(finger.GetID(), ch.GetID(), id) {
 			return finger
 		}
+	}
+
+	if ch.successor != nil && In(ch.successor.GetID(), ch.GetID(), id) {
+		return ch.successor
 	}
 
 	return nil
@@ -150,6 +142,7 @@ func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
+		log.Printf("[%v] sets predecessor %v", ch.GetID(), node.ID)
 		ch.predecessor = NewChordClient(node.IP, node.ID)
 	}
 	return nil
@@ -323,7 +316,6 @@ func NewChord(ip string) *Chord {
 	id := hash.EncodeKey(ip)
 	ch := Chord{
 		NodeInfo:   NodeInfo{ip, id},
-		fingersMtx: sync.RWMutex{},
 		fingers:    make([]Node, hash.MaxHashBits),
 		chain:      make([]Node, 3),
 	}
