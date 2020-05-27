@@ -1,9 +1,9 @@
 package test
 
 import (
+	"chord/hash"
 	"chord/ring"
 	"log"
-	"runtime/debug"
 	"testing"
 	"time"
 )
@@ -36,28 +36,6 @@ func newNode(
 	}()
 
 	return ch
-}
-
-func ne(e error, t *testing.T) {
-	if e != nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-
-func er(e error, t *testing.T) {
-	if e == nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-func as(cond bool, t *testing.T) {
-	if !cond {
-		debug.PrintStack()
-		t.Fatal("assertion failed")
-	}
 }
 
 func TestNodeCreate(t *testing.T) {
@@ -206,17 +184,17 @@ func TestLookup(t *testing.T) {
 	log.Printf("lookup %v, found %v", 1, found.ID)
 	as(found.ID == 18, t)
 
-	ne(ch0.FindSuccessor(63, &found), t)
-	log.Printf("lookup %v, found %v", 63, found.ID)
+	ne(ch0.FindSuccessor(1<<hash.MaxHashBits-1, &found), t)
+	log.Printf("lookup %v, found %v", 1<<hash.MaxHashBits-1, found.ID)
 	as(found.ID == 0, t)
-	ne(ch1.FindSuccessor(63, &found), t)
-	log.Printf("lookup %v, found %v", 63, found.ID)
+	ne(ch1.FindSuccessor(1<<hash.MaxHashBits-1, &found), t)
+	log.Printf("lookup %v, found %v", 1<<hash.MaxHashBits-1, found.ID)
 	as(found.ID == 0, t)
-	ne(ch2.FindSuccessor(63, &found), t)
-	log.Printf("lookup %v, found %v", 63, found.ID)
+	ne(ch2.FindSuccessor(1<<hash.MaxHashBits-1, &found), t)
+	log.Printf("lookup %v, found %v", 1<<hash.MaxHashBits-1, found.ID)
 	as(found.ID == 0, t)
-	ne(ch3.FindSuccessor(63, &found), t)
-	log.Printf("lookup %v, found %v", 63, found.ID)
+	ne(ch3.FindSuccessor(1<<hash.MaxHashBits-1, &found), t)
+	log.Printf("lookup %v, found %v", 1<<hash.MaxHashBits-1, found.ID)
 	as(found.ID == 0, t)
 
 	ne(ch0.FindSuccessor(37, &found), t)
