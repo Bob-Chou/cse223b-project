@@ -1,34 +1,11 @@
 package test
 
 import (
-	"testing"
-	"runtime/debug"
 	"sort"
+	"testing"
 
 	"chord/db"
 )
-
-func ne(e error, t *testing.T) {
-	if e != nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-
-func er(e error, t *testing.T) {
-	if e == nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-func as(cond bool, t *testing.T) {
-	if !cond {
-		debug.PrintStack()
-		t.Fatal("assertion failed")
-	}
-}
 
 func kv(k, v string) db.KV {
 	return db.KV{K:k, V:v}
