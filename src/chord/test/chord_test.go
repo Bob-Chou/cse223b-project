@@ -1,6 +1,7 @@
 package test
 
 import (
+	"chord/db"
 	"chord/hash"
 	"chord/ring"
 	"log"
@@ -11,18 +12,13 @@ import (
 func newNode(
 	ip string,
 	id uint64,
-	join ring.Node,
+	join string,
 	ready chan<- bool,
 	catch chan<- error,
 ) *ring.Chord {
 	// first Chord Node
-	ch := ring.NewChord(ip)
+	ch := ring.NewChord(ip, join, db.NewStore())
 	ch.ID = id
-	if join == nil {
-		ch.Create()
-	} else {
-		ch.Join(join)
-	}
 
 	go func() {
 		if e := ch.Init(); e != nil {
@@ -46,7 +42,7 @@ func TestNodeCreate(t *testing.T) {
 	ticker := time.NewTicker(10 * time.Second)
 
 	// first Chord Node
-	ch0 := newNode("localhost:1234", 0, nil, ready, catch)
+	ch0 := newNode("localhost:1234", 0, "", ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -57,7 +53,7 @@ func TestNodeCreate(t *testing.T) {
 	}
 
 	// second Chord Node
-	ch48 := newNode("localhost:1235", 48, ch0, ready, catch)
+	ch48 := newNode("localhost:1235", 48, ch0.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -68,7 +64,7 @@ func TestNodeCreate(t *testing.T) {
 	}
 
 	// third Chord Node
-	ch18 := newNode("localhost:1236", 18, ch0, ready, catch)
+	ch18 := newNode("localhost:1236", 18, ch0.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -79,7 +75,7 @@ func TestNodeCreate(t *testing.T) {
 	}
 
 	// fourth Chord Node
-	ch36 := newNode("localhost:1237", 36, ch18, ready, catch)
+	ch36 := newNode("localhost:1237", 36, ch18.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -124,7 +120,7 @@ func TestLookup(t *testing.T) {
 	ticker := time.NewTicker(10 * time.Second)
 
 	// first Chord Node
-	ch0 := newNode("localhost:1234", 0, nil, ready, catch)
+	ch0 := newNode("localhost:1234", 0, "", ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -135,7 +131,7 @@ func TestLookup(t *testing.T) {
 	}
 
 	// second Chord Node
-	ch1 := newNode("localhost:1235", 48, ch0, ready, catch)
+	ch1 := newNode("localhost:1235", 48, ch0.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -146,7 +142,7 @@ func TestLookup(t *testing.T) {
 	}
 
 	// third Chord Node
-	ch2 := newNode("localhost:1236", 18, ch0, ready, catch)
+	ch2 := newNode("localhost:1236", 18, ch0.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()
@@ -157,7 +153,7 @@ func TestLookup(t *testing.T) {
 	}
 
 	// fourth Chord Node
-	ch3 := newNode("localhost:1237", 36, ch2, ready, catch)
+	ch3 := newNode("localhost:1237", 36, ch2.IP, ready, catch)
 	select {
 	case <-ticker.C:
 		ticker.Stop()

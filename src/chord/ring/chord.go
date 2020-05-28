@@ -23,6 +23,8 @@ var _ db.Storage = new(Chord)
 type Chord struct {
 	// basic information
 	NodeInfo
+	// introducer IP address to Chord
+	accessPoint Node
 	// successor
 	successor Node
 	// predecessor
@@ -31,6 +33,8 @@ type Chord struct {
 	fingers []Node
 	// r consecutive chord node for chain replication
 	chain []Node
+	// backend storage
+	storage db.Storage
 }
 
 // GetID wraps Node.GetID
@@ -229,6 +233,14 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	catch := make(chan error)
 	quit := make(chan bool)
 	done := make(chan bool, 1)
+
+	// Join the Chord
+	if ch.accessPoint != nil {
+		ch.Join(ch.accessPoint)
+	} else {
+		ch.Create()
+	}
+
 	// Chord RPC services
 	go func() {
 		chordServer := &ChordServer{ch}
@@ -312,12 +324,21 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 }
 
 // NewChord create a new chord node and return the pointer to it
-func NewChord(ip string) *Chord {
+func NewChord(ip, accessIP string, storage db.Storage) *Chord {
 	id := hash.EncodeKey(ip)
+
+	var ap Node
+	if accessIP == "" || accessIP == ip {
+		ap = nil
+	} else {
+		ap = NewChordClient(accessIP, hash.EncodeKey(accessIP))
+	}
 	ch := Chord{
-		NodeInfo:   NodeInfo{ip, id},
-		fingers:    make([]Node, hash.MaxHashBits),
-		chain:      make([]Node, 3),
+		NodeInfo:    NodeInfo{ip, id},
+		accessPoint: ap,
+		fingers:     make([]Node, hash.MaxHashBits),
+		chain:       make([]Node, 3),
+		storage:     storage,
 	}
 	return &ch
 }
