@@ -85,7 +85,7 @@ func main() {
 	cmdArgs := args[1:]
 	if len(cmdArgs) == 0 {
 		// TODO add usage
-		fmt.Println()
+		fmt.Println("no args")
 	} else {
 		runCmd(storage, cmdArgs)
 	}

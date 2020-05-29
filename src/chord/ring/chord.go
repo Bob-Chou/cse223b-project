@@ -25,9 +25,9 @@ type Chord struct {
 	// basic information
 	NodeInfo
 	// successor
-	successor ChordClient
+	successor *ChordClient
 	// predecessor
-	predecessor ChordClient
+	predecessor *ChordClient
 	// mutex for fingers list
 	fingersMtx sync.RWMutex
 	// fingers list
@@ -68,7 +68,7 @@ func(ch *Chord) Create() {
 func(ch *Chord) Join(node *NodeEntry) {
 	ch.predecessor = nil
 	var found NodeInfo
-    node.FindSuccessor(ch.ID, &found)
+    (*node).FindSuccessor(ch.ID, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
 }
 
