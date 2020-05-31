@@ -26,9 +26,11 @@ type Chord struct {
 	// introducer IP address to Chord
 	accessPoint Node
 	// successor
-	successor Node
+	successor *ChordClient
 	// predecessor
-	predecessor Node
+	predecessor *ChordClient
+	// mutex for fingers list
+	fingersMtx sync.RWMutex
 	// fingers list
 	fingers []Node
 	// r consecutive chord node for chain replication
@@ -57,7 +59,7 @@ func(ch *Chord) Create() {
 func(ch *Chord) Join(node Node) {
 	ch.predecessor = nil
 	var found NodeInfo
-    node.FindSuccessor(ch.ID, &found)
+    (*node).FindSuccessor(ch.ID, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
 }
 
