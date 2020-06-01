@@ -19,7 +19,7 @@ var _ NodeEntry = new(Chord)
 var _ Node = new(Chord)
 
 // dummy var to check if Chord implements db.Storage interface
-var _ db.Storage = new(Chord)
+//var _ db.Storage = new(Chord)
 
 type Chord struct {
 	// basic information
@@ -28,8 +28,8 @@ type Chord struct {
 	accessPoint Node
 	// own client
 	client *ChordClient
-	// target client
-	target *ChordClient
+	// owner client
+	owner *ChordClient
 	// successor
 	successor *ChordClient
 	// predecessor
@@ -40,6 +40,9 @@ type Chord struct {
 	chain []Node
 	// backend storage
 	storage db.Storage
+
+	// kv lock
+	kvLock   sync.Mutex
 }
 
 // GetID wraps Node.GetID
@@ -148,24 +151,52 @@ func(ch *Chord) keys(p db.Pattern, list *db.List) error {
 
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
+
+	// find the key ID of key k
 	Kid := hash.EncodeKey(k)
 
+	// find the owner of incoming id
+	// throw error if owner is dead
 	var nc NodeInfo
 	if e := ch.FindSuccessor(Kid, &nc); e != nil {
-		ch.target = NewChordClient(nc.IP, nc.ID)
-		ch.target.Get(k, v)
+		// TODO: add retry if owner is dead
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
 	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+
+	// complete get in owner node
+	if e := ch.owner.Get(k, v); e != nil {
+		return ErrNotFound
+	}
+
 	return nil
 }
 
 // Set wraps the RPC interface db.Storage.Set
 func(ch *Chord) Set(kv db.KV, ok *bool) error {
-	panic("todo")
-}
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
 
-// Keys wraps the RPC interface db.Storage.Keys
-func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
-	panic("todo")
+	// find the key ID of key k
+	Kid := hash.EncodeKey(kv.K)
+
+	// find the owner of incoming id
+	// throw error if owner is dead
+	var nc NodeInfo
+	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+		// TODO: add retry if owner is dead
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
+	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+
+	// complete set in owner node
+	if e := ch.owner.Set(kv, ok); e != nil {
+		return ErrNotFound
+	}
+
+	return nil
 }
 
 // Notify wraps the RPC interface of NodeEntry.Notify

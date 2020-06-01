@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"chord/db"
 	"net/rpc"
 	"strings"
 	"sync"
@@ -112,6 +113,13 @@ func(c *ChordClient) Get(k string, v *string) error {
 	return c.rpc(name, k, v)
 }
 
+func(c *ChordClient) Set(kv db.KV, ok *bool) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Previous"
+	return c.rpc(name, kv, ok)
+}
+
 // NewChordClient returns a pointer to a ChordClient
 func NewChordClient(ip string, id uint64) *ChordClient {
 	return &ChordClient{
@@ -147,6 +155,10 @@ func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 
 func(c *ChordServer) Get(k string, v *string) error {
 	return c.entry.get(k, v)
+}
+
+func(c *ChordServer) Set(kv db.KV, ok *bool) error {
+	return c.entry.set(kv, ok)
 }
 
 var _ NodeEntry = new(ChordClient)
