@@ -34,8 +34,6 @@ type Chord struct {
 	successor *ChordClient
 	// predecessor
 	predecessor *ChordClient
-	// mutex for fingers list
-	fingersMtx sync.RWMutex
 	// fingers list
 	fingers []Node
 	// r consecutive chord node for chain replication
