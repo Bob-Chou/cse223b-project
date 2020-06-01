@@ -104,6 +104,14 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
+// Previous wraps the RPC interface of NodeEntry.Previous
+func(c *ChordClient) Get(k string, v *string) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Previous"
+	return c.rpc(name, k, v)
+}
+
 // NewChordClient returns a pointer to a ChordClient
 func NewChordClient(ip string, id uint64) *ChordClient {
 	return &ChordClient{
@@ -135,6 +143,10 @@ func(c *ChordServer) Next(id uint64, next *NodeInfo) error {
 // Previous returns the predecessor, or returns error if has no predecessor
 func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 	return c.entry.Previous(id, prev)
+}
+
+func(c *ChordServer) Get(k string, v *string) error {
+	return c.entry.get(k, v)
 }
 
 var _ NodeEntry = new(ChordClient)

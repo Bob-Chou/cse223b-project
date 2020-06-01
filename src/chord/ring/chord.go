@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"strings"
 	"time"
+	"sync"
 )
 
 // dummy var to check if Chord implements NodeEntry interface
@@ -25,6 +26,10 @@ type Chord struct {
 	NodeInfo
 	// introducer IP address to Chord
 	accessPoint Node
+	// own client
+	client *ChordClient
+	// target client
+	target *ChordClient
 	// successor
 	successor *ChordClient
 	// predecessor
@@ -59,7 +64,7 @@ func(ch *Chord) Create() {
 func(ch *Chord) Join(node Node) {
 	ch.predecessor = nil
 	var found NodeInfo
-    (*node).FindSuccessor(ch.ID, &found)
+    node.FindSuccessor(ch.ID, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
 }
 
@@ -130,9 +135,29 @@ func(ch *Chord) PrecedingNode(id uint64) Node {
 	return nil
 }
 
+// get returns the value of specific key from underlying storage
+func(ch *Chord) get(k string, v* string) error {
+	return ch.storage.Get(k, v)
+}
+
+func(ch *Chord) set(kv db.KV, ok *bool) error {
+	return ch.storage.Set(kv, ok)
+}
+
+func(ch *Chord) keys(p db.Pattern, list *db.List) error {
+	return ch.storage.Keys(p, list)
+}
+
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
-	panic("todo")
+	Kid := hash.EncodeKey(k)
+
+	var nc NodeInfo
+	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+		ch.target = NewChordClient(nc.IP, nc.ID)
+		ch.target.Get(k, v)
+	}
+	return nil
 }
 
 // Set wraps the RPC interface db.Storage.Set
