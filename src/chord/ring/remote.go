@@ -4,6 +4,7 @@ import (
 	"net/rpc"
 	"strings"
 	"sync"
+	"chord/db"
 )
 
 type ChordClient struct {
@@ -160,15 +161,15 @@ func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 }
 
 func(c *ChordServer) Get(k string, v *string) error {
-	return c.entry.get(k, v)
+	return c.entry.Get(k, v)
 }
 
 func(c *ChordServer) Set(kv db.KV, ok *bool) error {
-	return c.entry.set(kv, ok)
+	return c.entry.Set(kv, ok)
 }
 
 func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
-	return c.entry.keys(p,list)
+	return c.entry.Keys(p,list)
 }
 
 var _ NodeEntry = new(ChordClient)

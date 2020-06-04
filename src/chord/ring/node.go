@@ -1,5 +1,8 @@
 package ring
 
+import (
+	"chord/db"
+)
 // NodeInfo contains the basic information of a node, and it serves as the
 // identifier of the node to be passed over the RPCs
 type NodeInfo struct {
@@ -22,7 +25,7 @@ type NodeEntry interface {
 	// Set returns true if the kv is successfully set in the storage
 	Set(kv db.KV, ok *bool) error
 	// Keys
-    Keys(p Pattern, list *List) error
+    Keys(p db.Pattern, list *db.List) error
 }
 
 // Node is used as the entity of a remote chord node
