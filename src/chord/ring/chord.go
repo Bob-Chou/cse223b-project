@@ -68,8 +68,8 @@ func(ch *Chord) Join(node Node) {
 // the successor about n.
 func(ch *Chord) Stabilize() {
 	var x NodeInfo
-	xclient:=NewChordClient(x.IP,x.ID)
 	if e := ch.successor.Previous(ch.successor.GetID(), &x); e == nil {
+		xclient:=NewChordClient(x.IP,x.ID)
 		if In(x.ID,ch.ID,ch.successor.GetID()){
 			//lock kv service
 			ch.kvLock.Lock()
