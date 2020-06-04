@@ -4,6 +4,7 @@ import (
 	"net/rpc"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ChordClient struct {
@@ -77,7 +78,16 @@ func(c *ChordClient) Notify(node *NodeInfo, ok *bool) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.Notify"
-	return c.rpc(name, node, ok)
+	rtn := make(chan error, 1)
+	go func() {
+		rtn <- c.rpc(name, node, ok)
+	}()
+	select {
+	case e := <-rtn:
+		return e
+	case <-time.After(TimeOut):
+		return ErrTimeOut
+	}
 }
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
@@ -85,7 +95,16 @@ func(c *ChordClient) FindSuccessor(id uint64, found *NodeInfo) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.FindSuccessor"
-	return c.rpc(name, id, found)
+	rtn := make(chan error, 1)
+	go func() {
+		rtn <- c.rpc(name, id, found)
+	}()
+	select {
+	case e := <-rtn:
+		return e
+	case <-time.After(TimeOut):
+		return ErrTimeOut
+	}
 }
 
 // Next wraps the RPC interface of NodeEntry.Next
@@ -93,7 +112,16 @@ func(c *ChordClient) Next(id uint64, found *NodeInfo) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.Next"
-	return c.rpc(name, id, found)
+	rtn := make(chan error, 1)
+	go func() {
+		rtn <- c.rpc(name, id, found)
+	}()
+	select {
+	case e := <-rtn:
+		return e
+	case <-time.After(TimeOut):
+		return ErrTimeOut
+	}
 }
 
 // Previous wraps the RPC interface of NodeEntry.Previous
@@ -101,7 +129,16 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.Previous"
-	return c.rpc(name, id, found)
+	rtn := make(chan error, 1)
+	go func() {
+		rtn <- c.rpc(name, id, found)
+	}()
+	select {
+	case e := <-rtn:
+		return e
+	case <-time.After(TimeOut):
+		return ErrTimeOut
+	}
 }
 
 // NewChordClient returns a pointer to a ChordClient
