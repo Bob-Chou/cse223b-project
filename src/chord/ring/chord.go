@@ -9,6 +9,11 @@ import (
 	"net/rpc"
 	"strings"
 	"time"
+	"visual"
+)
+
+const (
+	visual_addr = "localhost:6008"
 )
 
 // dummy var to check if Chord implements NodeEntry interface
@@ -51,6 +56,10 @@ func(ch *Chord) GetIP() string {
 func(ch *Chord) Create() {
 	ch.predecessor = nil
 	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.NEW_CODE,
+	})
 }
 
 // Join joins a Chord ring containing the given node
@@ -59,6 +68,15 @@ func(ch *Chord) Join(node Node) {
 	var found NodeInfo
     node.FindSuccessor(ch.ID, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.NEW_CODE,
+	})
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.SET_SUCC,
+		Value: fmt.Sprintf("%v", found.ID),
+	})
 }
 
 // Stabilize is called periodically to verify n's immediate successor and tell
@@ -69,6 +87,11 @@ func(ch *Chord) Stabilize() {
 		if In(x.ID,ch.ID,ch.successor.GetID()){
 			log.Printf("[%v] sets successor %v", ch.GetID(), x.ID)
 			ch.successor = NewChordClient(x.IP,x.ID)
+			visual.SendMessage(visual_addr, visual.ChordMsg{
+				Id:   ch.ID,
+				Verb: visual.SET_SUCC,
+				Value: fmt.Sprintf("%v", x.ID),
+			})
 		}
 	} else if !ErrNotFound.Equals(e) {
 		panic(e)
@@ -148,6 +171,11 @@ func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
 		log.Printf("[%v] sets predecessor %v", ch.GetID(), node.ID)
 		ch.predecessor = NewChordClient(node.IP, node.ID)
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   ch.ID,
+			Verb: visual.SET_PRED,
+			Value: fmt.Sprintf("%v", node.ID),
+		})
 	}
 	return nil
 }

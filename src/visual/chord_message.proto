@@ -1,0 +1,24 @@
+// rpc.proto
+syntax = "proto3";
+
+package go_protoc;
+option go_package = "go_protoc";
+
+message ChordMessage {
+    uint64 nid = 1;
+    enum ChordVerb {
+        NEW_NODE = 0;
+        SET_SUCC = 1;
+        SET_PRED = 2;
+    }
+    ChordVerb verb = 2;
+    string value = 3;
+}
+
+message ChordReply {
+    bool reply = 1;
+}
+
+service ChordUpdate {
+    rpc Update (ChordMessage) returns (ChordReply);
+}
