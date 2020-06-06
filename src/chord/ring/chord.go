@@ -5,6 +5,7 @@ import (
 	"chord/hash"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"net/rpc"
 	"strings"
@@ -54,6 +55,10 @@ func(ch *Chord) GetIP() string {
 
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
+	rand.Seed(time.Now().UnixNano())
+	n := rand.Intn(500)
+	<-time.After(time.Duration(n) * time.Millisecond)
+
 	ch.predecessor = nil
 	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
 	visual.SendMessage(visual_addr, visual.ChordMsg{
@@ -64,6 +69,10 @@ func(ch *Chord) Create() {
 
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node Node) {
+	rand.Seed(time.Now().UnixNano())
+	n := rand.Intn(500)
+	<-time.After(time.Duration(n) * time.Millisecond)
+
 	ch.predecessor = nil
 	var found NodeInfo
     node.FindSuccessor(ch.ID, &found)
