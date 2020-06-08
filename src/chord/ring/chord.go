@@ -55,10 +55,7 @@ func(ch *Chord) GetIP() string {
 
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
-	rand.Seed(time.Now().UnixNano())
-	n := rand.Intn(500)
-	<-time.After(time.Duration(n) * time.Millisecond)
-
+	RandomDelay(1000)
 	ch.predecessor = nil
 	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
 	visual.SendMessage(visual_addr, visual.ChordMsg{
@@ -69,10 +66,7 @@ func(ch *Chord) Create() {
 
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node Node) {
-	rand.Seed(time.Now().UnixNano())
-	n := rand.Intn(500)
-	<-time.After(time.Duration(n) * time.Millisecond)
-
+	RandomDelay(1000)
 	ch.predecessor = nil
 	var found NodeInfo
     node.FindSuccessor(ch.ID, &found)
@@ -310,6 +304,7 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	}()
 
 	go func() {
+		RandomDelay(100)
 		ticker := time.NewTicker(100 * time.Millisecond)
 		next := 1
 		for {
@@ -326,7 +321,8 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	}()
 
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		RandomDelay(1000)
+		ticker := time.NewTicker(2 * time.Second)
 		for {
 			select {
 			case <-quit:
@@ -339,7 +335,8 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	}()
 
 	go func() {
-		ticker := time.NewTicker(time.Second)
+		RandomDelay(1000)
+		ticker := time.NewTicker(2 * time.Second)
 		for {
 			select {
 			case <-quit:
@@ -396,4 +393,12 @@ func RIn(id, nid1, nid2 uint64) bool {
 	} else {
 		return id <= nid2 || id > nid1
 	}
+}
+
+func RandomDelay(maxMilSec int) {
+	if maxMilSec <= 0 {
+		return
+	}
+	n := rand.Intn(maxMilSec)
+	<-time.After(time.Duration(n) * time.Millisecond)
 }
