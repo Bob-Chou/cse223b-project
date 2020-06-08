@@ -2,61 +2,12 @@ package test
 
 import (
 	"chord/db"
-	"chord/ring"
 	"log"
 	"testing"
 	"time"
-	"runtime/debug"
 )
 
-func ne(e error, t *testing.T) {
-	if e != nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-
-func er(e error, t *testing.T) {
-	if e == nil {
-		debug.PrintStack()
-		t.Fatal(e)
-	}
-}
-
-func as(cond bool, t *testing.T) {
-	if !cond {
-		debug.PrintStack()
-		t.Fatal("assertion failed")
-	}
-}
-
-func newNode(
-	ip string,
-	id uint64,
-	join string,
-	ready chan<- bool,
-	catch chan<- error,
-) *ring.Chord {
-	// first Chord Node
-	ch := ring.NewChord(ip, join, db.NewStore())
-	ch.ID = id
-
-	go func() {
-		if e := ch.Init(); e != nil {
-			catch <- e
-			return
-		}
-		if e := ch.Serve(ready); e != nil {
-			catch <- e
-			return
-		}
-	}()
-
-	return ch
-}
-
-func TestNodeCreate(t *testing.T) {
+func TestKV(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	catch := make(chan error)
@@ -115,24 +66,6 @@ func TestNodeCreate(t *testing.T) {
 		t.Fatal(e)
 	}
 
-	var next, prev ring.NodeInfo
-	ne(ch0.Next(ch0.GetID(), &next), t)
-	as(next.ID == ch18.GetID(), t)
-	ne(ch0.Previous(ch0.GetID(), &prev), t)
-	as(prev.ID == ch48.GetID(), t)
-	ne(ch18.Next(ch18.GetID(), &next), t)
-	as(next.ID == ch36.GetID(), t)
-	ne(ch18.Previous(ch18.GetID(), &prev), t)
-	as(prev.ID == ch0.GetID(), t)
-	ne(ch36.Next(ch36.GetID(), &next), t)
-	as(next.ID == ch48.GetID(), t)
-	ne(ch36.Previous(ch36.GetID(), &prev), t)
-	as(prev.ID == ch18.GetID(), t)
-	ne(ch48.Next(ch48.GetID(), &next), t)
-	as(next.ID == ch0.GetID(), t)
-	ne(ch48.Previous(ch48.GetID(), &prev), t)
-	as(prev.ID == ch36.GetID(), t)
-
 	var kv db.KV
 	var ok bool		 // return value for function`Set()`
 	var val string   // return value for function `Get()`
@@ -172,22 +105,22 @@ func TestNodeCreate(t *testing.T) {
 	ne(ch0.Get("30", &val), t)
 	as(val == "3", t)
 	val = "_"
-	ne(ch0.Get("40", &val), t)
+	ne(ch48.Get("40", &val), t)
 	as(val == "4", t)
 	val = "_"
-	ne(ch0.Get("50", &val), t)
+	ne(ch48.Get("50", &val), t)
 	as(val == "5", t)
 	val = "_"
-	ne(ch0.Get("60", &val), t)
+	ne(ch18.Get("60", &val), t)
 	as(val == "6", t)
 	val = "_"
-	ne(ch0.Get("70", &val), t)
+	ne(ch18.Get("70", &val), t)
 	as(val == "7", t)
 	val = "_"
-	ne(ch0.Get("80", &val), t)
+	ne(ch36.Get("80", &val), t)
 	as(val == "8", t)
 	val = "_"
-	ne(ch0.Get("90", &val), t)
+	ne(ch36.Get("90", &val), t)
 	as(val == "9", t)
 }
 
