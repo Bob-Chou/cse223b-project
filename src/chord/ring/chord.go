@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"strings"
 	"time"
+	"sync"
 )
 
 // dummy var to check if Chord implements NodeEntry interface
@@ -18,13 +19,17 @@ var _ NodeEntry = new(Chord)
 var _ Node = new(Chord)
 
 // dummy var to check if Chord implements db.Storage interface
-var _ db.Storage = new(Chord)
+//var _ db.Storage = new(Chord)
 
 type Chord struct {
 	// basic information
 	NodeInfo
 	// introducer IP address to Chord
 	accessPoint Node
+	// own client
+	client *ChordClient
+	// owner client
+	owner *ChordClient
 	// successor
 	successor *ChordClient
 	// predecessor
@@ -35,6 +40,9 @@ type Chord struct {
 	chain []Node
 	// backend storage
 	storage db.Storage
+
+	// kv lock
+	kvLock   sync.Mutex
 }
 
 // GetID wraps Node.GetID
@@ -128,19 +136,69 @@ func(ch *Chord) PrecedingNode(id uint64) Node {
 	return nil
 }
 
+// get returns the value of specific key from underlying storage
+func(ch *Chord) get(k string, v* string) error {
+	return ch.storage.Get(k, v)
+}
+
+func(ch *Chord) set(kv db.KV, ok *bool) error {
+	return ch.storage.Set(kv, ok)
+}
+
+func(ch *Chord) keys(p db.Pattern, list *db.List) error {
+	return ch.storage.Keys(p, list)
+}
+
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
-	panic("todo")
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
+
+	// find the key ID of key k
+	Kid := hash.EncodeKey(k)
+	//Kid = Kid % 72
+
+	// find the owner of incoming id
+	// throw error if owner is dead
+	var nc NodeInfo
+	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
+	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("get key[%v] with kid[%v] in node[%v]\n", k, Kid, nc.ID)
+
+	// complete get in owner node
+	if e := ch.owner.Get(k, v); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when doing get: %v", k, e))
+	}
+
+	return nil
 }
 
 // Set wraps the RPC interface db.Storage.Set
 func(ch *Chord) Set(kv db.KV, ok *bool) error {
-	panic("todo")
-}
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
 
-// Keys wraps the RPC interface db.Storage.Keys
-func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
-	panic("todo")
+	// find the key ID of key k
+	Kid := hash.EncodeKey(kv.K)
+	//Kid = Kid % 72
+
+	// find the owner of incoming id
+	// throw error if owner is dead
+	var nc NodeInfo
+	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
+	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("set key[%v] with kid[%v] in node[%v]\n", kv.K, Kid, nc.ID)
+
+	// complete set in owner node
+	if e := ch.owner.Set(kv, ok); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when doing set: %v", Kid, e))
+	}
+
+	return nil
 }
 
 // Notify wraps the RPC interface of NodeEntry.Notify
