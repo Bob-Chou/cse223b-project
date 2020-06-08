@@ -156,19 +156,20 @@ func(ch *Chord) Get(k string, v *string) error {
 
 	// find the key ID of key k
 	Kid := hash.EncodeKey(k)
+	//Kid = Kid % 72
 
 	// find the owner of incoming id
 	// throw error if owner is dead
 	var nc NodeInfo
 	if e := ch.FindSuccessor(Kid, &nc); e != nil {
-		// TODO: add retry if owner is dead
 		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
 	}
 	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("get key[%v] with kid[%v] in node[%v]\n", k, Kid, nc.ID)
 
 	// complete get in owner node
 	if e := ch.owner.Get(k, v); e != nil {
-		return ErrNotFound
+		panic(fmt.Errorf("[%v] encounter error when doing get: %v", k, e))
 	}
 
 	return nil
@@ -181,19 +182,20 @@ func(ch *Chord) Set(kv db.KV, ok *bool) error {
 
 	// find the key ID of key k
 	Kid := hash.EncodeKey(kv.K)
+	//Kid = Kid % 72
 
 	// find the owner of incoming id
 	// throw error if owner is dead
 	var nc NodeInfo
 	if e := ch.FindSuccessor(Kid, &nc); e != nil {
-		// TODO: add retry if owner is dead
 		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
 	}
 	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("set key[%v] with kid[%v] in node[%v]\n", kv.K, Kid, nc.ID)
 
 	// complete set in owner node
 	if e := ch.owner.Set(kv, ok); e != nil {
-		return ErrNotFound
+		panic(fmt.Errorf("[%v] encounter error when doing set: %v", Kid, e))
 	}
 
 	return nil

@@ -109,14 +109,14 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 func(c *ChordClient) Get(k string, v *string) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
-	name := port + "/NodeEntry.Previous"
+	name := port + "/NodeEntry.Get"
 	return c.rpc(name, k, v)
 }
 
 func(c *ChordClient) Set(kv db.KV, ok *bool) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
-	name := port + "/NodeEntry.Previous"
+	name := port + "/NodeEntry.Set"
 	return c.rpc(name, kv, ok)
 }
 
