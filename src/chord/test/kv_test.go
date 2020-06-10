@@ -209,6 +209,14 @@ func TestMigration(t *testing.T) {
 		t.Fatal(e)
 	}
 
+	ticker2 := time.NewTicker(10 * time.Second)
+	select {
+	case <-ticker2.C:
+		ticker2.Stop()
+	case e := <-catch:
+		t.Fatal(e)
+	}
+
 	val = "_"
 	ne(ch0.Get("10", &val), t)
 	as(val == "1", t)
