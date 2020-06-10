@@ -9,13 +9,14 @@ import tkinter as tk
 from tkinter import font
 from concurrent import futures
 
-
 MaxHashSlots = 1 << 6
+
 
 class ChordListener(chord_message_pb2_grpc.ChordUpdateServicer):
     def __init__(self, vs):
         super().__init__()
         self.vs = vs
+
     def Update(self, request, context):
         if request.verb == 0:
             vs.update_node(request.nid)
@@ -28,33 +29,44 @@ class ChordListener(chord_message_pb2_grpc.ChordUpdateServicer):
             pred_id = int(request.value)
             vs.update_node(request.nid, predecessor=pred_id)
             print("{} set pred {}".format(request.nid, pred_id))
-        return chord_message_pb2.ChordReply(reply = True)
+        elif request.verb == 3:
+            hi = request.value == "1"
+            vs.update_node(request.nid, highlight=hi)
+            print("{} set highlight {}".format(request.nid, hi))
+
+        return chord_message_pb2.ChordReply(reply=True)
 
 
 class Chord:
-    def __init__(self, id, predecessor=-1, successor=-1):
+    def __init__(self, id, predecessor=-1, successor=-1, highlight=False):
         self.id = id
         self.predecessor = predecessor
         self.successor = successor
+        self.highlight = highlight
 
 
 class Ring:
     def __init__(self):
         self.ring = {}
 
-    def update_node(self, nid, predecessor=None, successor=None):
+    def update_node(self, nid, predecessor=None, successor=None, highlight=None):
         if nid in self.ring:
             if predecessor != None:
                 self.ring[nid].predecessor = predecessor
-            if successor != None:
+            if successor is not None:
                 self.ring[nid].successor = successor
+            if highlight is not None:
+                self.ring[nid].highlight = highlight
         else:
             p, s = -1, -1
-            if predecessor != None:
+            h = False
+            if predecessor is not None:
                 p = predecessor
-            if successor != None:
+            if successor is not None:
                 s = successor
-            self.ring[nid] = Chord(nid, predecessor=p, successor=s)
+            if highlight is not None:
+                h = highlight
+            self.ring[nid] = Chord(nid, predecessor=p, successor=s, highlight=h)
 
     def get_ring(self):
         ret = self.ring.values()
@@ -66,6 +78,7 @@ class Ring:
             return self.ring[nid]
         return None
 
+
 class ChordDrawer:
     def __init__(self, canvas, width, height):
         self.canvas = canvas
@@ -73,12 +86,14 @@ class ChordDrawer:
         self.height = height
         self.radius = 3 * min(width, height) / 8
         self.nid = None
+        self.hl = False
         self.succ_id = None
         self.pred_id = None
         self.tk_node = None
         self.tk_text = None
         self.tk_succ = None
         self.tk_pred = None
+        self.tk_hl = None
 
     def ring_loc(self, x, y, r, theta):
         x = math.floor(x + r * math.sin(theta))
@@ -86,14 +101,14 @@ class ChordDrawer:
         return x, y
 
     def check(self, nid):
-        return nid != None and nid >= 0 and nid < MaxHashSlots
+        return nid is not None and nid >= 0 and nid < MaxHashSlots
 
     def update(self, node):
         if not self.check(node.id):
             return
 
         theta = 2 * node.id * math.pi / MaxHashSlots
-        x0, y0 = self.width//2, self.height//2
+        x0, y0 = self.width // 2, self.height // 2
         cx, cy = self.ring_loc(x0, y0, self.radius, theta)
         cr = 10
         diva = 0.5
@@ -101,56 +116,71 @@ class ChordDrawer:
         # node plot and text plot
         if self.check(node.id) and self.nid != node.id:
 
-            if self.tk_node != None:
+            if self.tk_node is not None:
                 self.canvas.delete(self.tk_node)
+                self.tk_node = None
             self.nid = node.id
             self.tk_node = self.canvas.create_oval(cx - cr, cy - cr, cx + cr,
-                    cy + cr, fill="yellow")
+                                                   cy + cr, fill="yellow")
 
-            if self.tk_text != None:
+            if self.tk_text is not None:
                 self.canvas.delete(self.tk_text)
+                self.tk_text = None
             tx, ty = self.ring_loc(cx, cy, 30, theta)
             self.tk_text = self.canvas.create_text(tx, ty,
-                    text="{}".format(node.id),
-                    font=font.Font(family='Helvetica', size=18, weight='bold'))
+                                                   text="{}".format(node.id),
+                                                   font=font.Font(family='Helvetica', size=18, weight='bold'))
 
-        # successor pointer plot
+        # highlight plot
+        if self.tk_hl is not None and self.hl != node.highlight:
+            self.canvas.delete(self.tk_hl)
+            self.tk_hl = None
+        if self.hl != node.highlight and node.highlight:
+            self.tk_hl = self.canvas.create_oval(cx - cr, cy - cr, cx + cr,
+                                                 cy + cr, fill="green")
+        self.hl = node.highlight
+
+    # successor pointer plot
         succ = node.successor
-        if self.tk_succ != None and self.succ_id != succ:
+        if self.tk_succ is not None and self.succ_id != succ:
             self.canvas.delete(self.tk_succ)
+            self.tk_succ = None
 
         if self.check(succ) and self.succ_id != succ:
             self.succ_id = succ
             sa = 2 * succ * math.pi / MaxHashSlots
-            x, y = self.ring_loc(cx, cy, cr, theta + math.pi/2 - diva)
+            x, y = self.ring_loc(cx, cy, cr, theta + math.pi / 2 - diva)
             sx, sy = self.ring_loc(x0, y0, self.radius, sa)
-            sx, sy = self.ring_loc(sx, sy, cr, sa - math.pi/2 + diva)
+            sx, sy = self.ring_loc(sx, sy, cr, sa - math.pi / 2 + diva)
             self.tk_succ = self.canvas.create_line(x, y, sx, sy, fill="red",
-                    arrow=tk.LAST)
+                                                   arrow=tk.LAST)
 
         # predecessor pointer plot
         pred = node.predecessor
-        if self.tk_pred != None and self.pred_id != pred:
+        if self.tk_pred is not None and self.pred_id != pred:
             self.canvas.delete(self.tk_pred)
+            self.tk_pred = None
 
         if self.check(pred) and self.pred_id != pred:
             self.pred_id = pred
             pa = 2 * pred * math.pi / MaxHashSlots
-            x, y = self.ring_loc(cx, cy, cr, theta - math.pi/2 - diva)
+            x, y = self.ring_loc(cx, cy, cr, theta - math.pi / 2 - diva)
             px, py = self.ring_loc(x0, y0, self.radius, pa)
-            px, py = self.ring_loc(px, py, cr, pa + math.pi/2 + diva)
+            px, py = self.ring_loc(px, py, cr, pa + math.pi / 2 + diva)
             self.tk_pred = self.canvas.create_line(x, y, px, py, fill="blue",
-                    arrow=tk.LAST)
+                                                   arrow=tk.LAST)
 
     def delete(self):
-        if self.tk_node != None:
+        if self.tk_node is not None:
             self.canvas.delete(self.tk_node)
-        if self.tk_text != None:
+        if self.tk_text is not None:
             self.canvas.delete(self.tk_text)
-        if self.tk_pred != None:
+        if self.tk_pred is not None:
             self.canvas.delete(self.tk_pred)
-        if self.tk_succ != None:
+        if self.tk_succ is not None:
             self.canvas.delete(self.tk_succ)
+        if self.tk_hl is not None:
+            self.canvas.delete(self.tk_hl)
 
 
 class Visualizer(tk.Tk):
@@ -168,7 +198,7 @@ class Visualizer(tk.Tk):
 
         # plot ring
         w, h = self.width, self.height
-        x0, y0 = w/2, h/2
+        x0, y0 = w / 2, h / 2
         r = 3 * min(w, h) / 8
         self.canvas.create_oval(x0 - r, y0 - r, x0 + r, y0 + r, dash=(5, 5))
 
@@ -178,9 +208,10 @@ class Visualizer(tk.Tk):
 
         self.worker.start()
 
-    def update_node(self, nid, predecessor=None, successor=None):
+    def update_node(self, nid, predecessor=None, successor=None, highlight=None):
         with self.cond:
-            self.ring.update_node(nid, predecessor=predecessor, successor=successor)
+            self.ring.update_node(nid, predecessor=predecessor,
+                                  successor=successor, highlight=highlight)
             self.cond.notify()
 
     def listen(self):
@@ -218,7 +249,7 @@ class Visualizer(tk.Tk):
         for k, v in self.ring.ring.items():
             if k not in self.draws:
                 self.draws[k] = ChordDrawer(self.canvas, self.width,
-                        self.height)
+                                            self.height)
             self.draws[k].update(v)
 
 

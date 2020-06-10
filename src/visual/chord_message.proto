@@ -10,6 +10,7 @@ message ChordMessage {
         NEW_NODE = 0;
         SET_SUCC = 1;
         SET_PRED = 2;
+        SET_HLGHT = 3;
     }
     ChordVerb verb = 2;
     string value = 3;

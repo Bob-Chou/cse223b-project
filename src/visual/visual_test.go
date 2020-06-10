@@ -61,4 +61,33 @@ func TestVisualize(t *testing.T) {
 
         <-time.After(500 * time.Millisecond)
     }
+
+    for i := 0; i < 10; i++ {
+       fmt.Print("set highlight!")
+       reply, err := client.Update(context.Background(), &go_protoc.ChordMessage{
+           Nid:   uint64(i * gap),
+           Verb:  go_protoc.ChordMessage_SET_HLGHT,
+           Value: "1",
+       })
+       if err != nil {
+           log.Fatal(err)
+       }
+       fmt.Println(reply.GetReply())
+
+       <-time.After(500 * time.Millisecond)
+    }
+
+    for i := 0; i < 10; i++ {
+       reply, err := client.Update(context.Background(), &go_protoc.ChordMessage{
+           Nid:   uint64(i * gap),
+           Verb:  go_protoc.ChordMessage_SET_HLGHT,
+           Value: "0",
+       })
+       if err != nil {
+           log.Fatal(err)
+       }
+       fmt.Println(reply.GetReply())
+
+       <-time.After(500 * time.Millisecond)
+    }
 }
