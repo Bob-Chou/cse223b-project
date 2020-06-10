@@ -1,10 +1,10 @@
 package ring
 
 import (
+	"chord/db"
 	"net/rpc"
 	"strings"
 	"sync"
-	"chord/db"
 )
 
 type ChordClient struct {
@@ -105,16 +105,7 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
-// NewChordClient returns a pointer to a ChordClient
-func NewChordClient(ip string, id uint64) *ChordClient {
-	return &ChordClient{
-		NodeInfo: NodeInfo{IP: ip, ID: id},
-		conn:     nil,
-		connLock: sync.Mutex{},
-	}
-}
-
-
+// Previous wraps the RPC interface of NodeEntry.Previous
 func(c *ChordClient) Get(k string, v *string) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
@@ -127,6 +118,15 @@ func(c *ChordClient) Set(kv db.KV, ok *bool) error {
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.Set"
 	return c.rpc(name, kv, ok)
+}
+
+// NewChordClient returns a pointer to a ChordClient
+func NewChordClient(ip string, id uint64) *ChordClient {
+	return &ChordClient{
+		NodeInfo: NodeInfo{IP: ip, ID: id},
+		conn:     nil,
+		connLock: sync.Mutex{},
+	}
 }
 
 func(c *ChordClient) Keys(p db.Pattern, list *db.List) error{
@@ -161,15 +161,15 @@ func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 }
 
 func(c *ChordServer) Get(k string, v *string) error {
-	return c.entry.Get(k, v)
+  return c.entry.get(k, v)
 }
 
 func(c *ChordServer) Set(kv db.KV, ok *bool) error {
-	return c.entry.Set(kv, ok)
+	return c.entry.set(kv, ok)
 }
 
 func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
-	return c.entry.Keys(p,list)
+	return c.entry.keys(p,list)
 }
 
 var _ NodeEntry = new(ChordClient)

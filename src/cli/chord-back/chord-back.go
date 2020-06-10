@@ -16,7 +16,7 @@ const (
 
 func noError(e error) {
 	if e != nil {
-		log.Printf("error is ", e)
+		log.Fatal(e)
 	}
 }
 func run(addr string) {
