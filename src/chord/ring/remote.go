@@ -129,6 +129,13 @@ func NewChordClient(ip string, id uint64) *ChordClient {
 	}
 }
 
+func(c *ChordClient) Keys(p db.Pattern, list *db.List) error{
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Keys"
+	return c.rpc(name, p, list)
+}
+
 type ChordServer struct {
 	entry *Chord
 }
@@ -154,11 +161,15 @@ func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 }
 
 func(c *ChordServer) Get(k string, v *string) error {
-	return c.entry.get(k, v)
+  return c.entry.get(k, v)
 }
 
 func(c *ChordServer) Set(kv db.KV, ok *bool) error {
 	return c.entry.set(kv, ok)
+}
+
+func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
+	return c.entry.keys(p,list)
 }
 
 var _ NodeEntry = new(ChordClient)
