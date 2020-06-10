@@ -4,6 +4,8 @@ import (
 	"chord/db"
 	"chord/hash"
 	"chord/ring"
+	"fmt"
+	"io/ioutil"
 	"log"
 	"testing"
 	"time"
@@ -32,6 +34,26 @@ func newNode(
 	}()
 
 	return ch
+}
+
+func TestVisual(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	catch := make(chan error)
+	ready := make(chan bool)
+
+	// first Chord Node
+	ch0 := newNode("localhost:1234", 0, "", ready, catch)
+	<-ready
+	for i := 1; i < 10; i++ {
+		<-time.After(500 * time.Millisecond)
+		newNode(fmt.Sprintf("localhost:%v", 1234+i), uint64(i*6), "localhost:1234", ready, catch)
+		<-ready
+	}
+	<-time.After(15 * time.Second)
+	var found ring.NodeInfo
+	ch0.FindSuccessorVisual(50, &found)
+	<-time.After(2 * time.Second)
+	ch0.FindSuccessorVisual(63, &found)
 }
 
 func TestNodeCreate(t *testing.T) {

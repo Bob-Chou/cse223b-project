@@ -88,6 +88,14 @@ func(c *ChordClient) FindSuccessor(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
+// FindSuccessorVisual wraps the RPC interface of NodeEntry.FindSuccessorVisual
+func(c *ChordClient) FindSuccessorVisual(id uint64, found *NodeInfo) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.FindSuccessorVisual"
+	return c.rpc(name, id, found)
+}
+
 // Next wraps the RPC interface of NodeEntry.Next
 func(c *ChordClient) Next(id uint64, found *NodeInfo) error {
 	addrSplit := strings.Split(c.IP, ":")
@@ -120,6 +128,11 @@ type ChordServer struct {
 // FindSuccessor is called to find the successor of a given id
 func(c *ChordServer) FindSuccessor(id uint64, found *NodeInfo) error {
 	return c.entry.FindSuccessor(id, found)
+}
+
+// FindSuccessor is called to find the successor of a given id
+func(c *ChordServer) FindSuccessorVisual(id uint64, found *NodeInfo) error {
+	return c.entry.FindSuccessorVisual(id, found)
 }
 
 // Notify is called when the given node thinks it might be our predecessor

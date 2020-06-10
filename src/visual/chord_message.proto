@@ -11,6 +11,7 @@ message ChordMessage {
         SET_SUCC = 1;
         SET_PRED = 2;
         SET_HLGHT = 3;
+        NEWS = 4;
     }
     ChordVerb verb = 2;
     string value = 3;

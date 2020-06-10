@@ -8,10 +8,11 @@ import (
 )
 
 const (
-    NEW_CODE = go_protoc.ChordMessage_NEW_NODE
+    NEW_NODE = go_protoc.ChordMessage_NEW_NODE
     SET_SUCC = go_protoc.ChordMessage_SET_SUCC
     SET_PRED = go_protoc.ChordMessage_SET_PRED
     SET_HLGHT = go_protoc.ChordMessage_SET_HLGHT
+    NEWS = go_protoc.ChordMessage_NEWS
 )
 
 type ChordMsg struct {

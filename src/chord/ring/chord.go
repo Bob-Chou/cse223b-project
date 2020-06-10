@@ -60,7 +60,12 @@ func(ch *Chord) Create() {
 	ch.successor = NewChordClient(ch.GetIP(),ch.GetID())
 	visual.SendMessage(visual_addr, visual.ChordMsg{
 		Id:   ch.ID,
-		Verb: visual.NEW_CODE,
+		Verb: visual.NEW_NODE,
+	})
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.NEWS,
+		Value: fmt.Sprintf("%v joins", ch.ID),
 	})
 }
 
@@ -73,12 +78,17 @@ func(ch *Chord) Join(node Node) {
     ch.successor = NewChordClient(found.IP,found.ID)
 	visual.SendMessage(visual_addr, visual.ChordMsg{
 		Id:   ch.ID,
-		Verb: visual.NEW_CODE,
+		Verb: visual.NEW_NODE,
 	})
 	visual.SendMessage(visual_addr, visual.ChordMsg{
 		Id:   ch.ID,
 		Verb: visual.SET_SUCC,
 		Value: fmt.Sprintf("%v", found.ID),
+	})
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.NEWS,
+		Value: fmt.Sprintf("%v joins", ch.ID),
 	})
 }
 
@@ -209,6 +219,64 @@ func(ch *Chord) FindSuccessor(id uint64, found *NodeInfo) error {
 	}
 	*found = ans
 
+	return nil
+}
+
+// FindSuccessorVisual wraps the RPC interface of NodeEntry.FindSuccessorVisual
+func(ch *Chord) FindSuccessorVisual(id uint64, found *NodeInfo) error {
+	id = id % (1 << len(ch.fingers))
+	//log.Printf("[%v] start to find successor of %v", ch.ID, id)
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.NEWS,
+		Value: fmt.Sprintf("Lookup %v", id),
+	})
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.SET_HLGHT,
+		Value: "1",
+	})
+
+	// wait for some time to for visualization
+	<-time.After(time.Second)
+
+	if RIn(id, ch.GetID(), ch.successor.GetID()) {
+		*found = NodeInfo{
+			IP: ch.successor.GetIP(),
+			ID: ch.successor.GetID(),
+		}
+		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   ch.ID,
+			Verb: visual.SET_HLGHT,
+			Value: "0",
+		})
+		return nil
+	}
+
+	redirect := ch.PrecedingNode(id)
+
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.SET_HLGHT,
+		Value: "0",
+	})
+
+	if redirect == nil {
+		return ErrNotReady
+	}
+
+	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
+	var ans NodeInfo
+	if e := redirect.FindSuccessorVisual(id, &ans); e !=nil {
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   ch.ID,
+			Verb: visual.SET_HLGHT,
+			Value: "0",
+		})
+		return e
+	}
+	*found = ans
 	return nil
 }
 

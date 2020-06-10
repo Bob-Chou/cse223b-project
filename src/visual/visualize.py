@@ -33,6 +33,9 @@ class ChordListener(chord_message_pb2_grpc.ChordUpdateServicer):
             hi = request.value == "1"
             vs.update_node(request.nid, highlight=hi)
             print("{} set highlight {}".format(request.nid, hi))
+        elif request.verb == 4:
+            vs.update_news(request.value)
+            print("news: {}".format(request.value))
 
         return chord_message_pb2.ChordReply(reply=True)
 
@@ -129,7 +132,10 @@ class ChordDrawer:
             tx, ty = self.ring_loc(cx, cy, 30, theta)
             self.tk_text = self.canvas.create_text(tx, ty,
                                                    text="{}".format(node.id),
-                                                   font=font.Font(family='Helvetica', size=18, weight='bold'))
+                                                   font=font.Font(
+                                                       family='Helvetica',
+                                                       size=18,
+                                                       weight='bold'))
 
         # highlight plot
         if self.tk_hl is not None and self.hl != node.highlight:
@@ -140,7 +146,7 @@ class ChordDrawer:
                                                  cy + cr, fill="green")
         self.hl = node.highlight
 
-    # successor pointer plot
+        # successor pointer plot
         succ = node.successor
         if self.tk_succ is not None and self.succ_id != succ:
             self.canvas.delete(self.tk_succ)
@@ -193,6 +199,9 @@ class Visualizer(tk.Tk):
         self.canvas = tk.Canvas(self, width=800, height=600, bg='white')
         self.canvas.pack()
         self.draws = {}
+        self.news = ""
+        self.news_flag = False
+        self.tk_news = None
         self.title("You see the Chord!")
         self.bind('<Destroy>', self.kill)
 
@@ -208,6 +217,14 @@ class Visualizer(tk.Tk):
 
         self.worker.start()
 
+    def update_news(self, news):
+        if news == self.news:
+            return
+        self.news = news
+        with self.cond:
+            self.news_flag = True
+            self.cond.notify()
+
     def update_node(self, nid, predecessor=None, successor=None, highlight=None):
         with self.cond:
             self.ring.update_node(nid, predecessor=predecessor,
@@ -216,7 +233,8 @@ class Visualizer(tk.Tk):
 
     def listen(self):
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
-        chord_message_pb2_grpc.add_ChordUpdateServicer_to_server(ChordListener(self), server)
+        chord_message_pb2_grpc.add_ChordUpdateServicer_to_server(
+            ChordListener(self), server)
 
         print("Listen Chord news on: {}".format(self.addr))
         server.add_insecure_port(self.addr)
@@ -229,6 +247,7 @@ class Visualizer(tk.Tk):
                         server.stop(0)
                         print("Stop listening {}".format(self.addr))
                         return
+                    self.plot_news()
                     self.plot_ring()
                     self.cond.wait()
         except KeyboardInterrupt:
@@ -251,6 +270,18 @@ class Visualizer(tk.Tk):
                 self.draws[k] = ChordDrawer(self.canvas, self.width,
                                             self.height)
             self.draws[k].update(v)
+
+    def plot_news(self):
+        if self.news_flag:
+            self.news_flag = False
+            self.canvas.delete(self.tk_news)
+            self.tk_news = self.canvas.create_text(min(self.width//10, 50),
+                                                   min(self.height//10, 50),
+                                                   text=self.news,
+                                                   font=font.Font(
+                                                       family='Helvetica',
+                                                       size=18,
+                                                       weight='bold'))
 
 
 if __name__ == "__main__":
