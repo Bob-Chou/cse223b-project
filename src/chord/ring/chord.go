@@ -72,9 +72,9 @@ func(ch *Chord) Join(node Node) {
 // the successor about n.
 func(ch *Chord) Stabilize() {
 	var x NodeInfo
-	if e := ch.successor.Previous(ch.successor.GetID(), &x); e == nil {
+	if e := ch.successor.Previous(ch.successor.ID, &x); e == nil {
 		xclient:=NewChordClient(x.IP,x.ID)
-		if In(x.ID,ch.ID,ch.successor.GetID()){
+		if In(x.ID,ch.ID,ch.successor.ID){
 			//lock kv service
 			ch.kvLock.Lock()
 			var l db.List
@@ -84,13 +84,14 @@ func(ch *Chord) Stabilize() {
 				kid:=hash.EncodeKey(k)
 				//need to migrate to x
 				if RIn(kid,ch.ID,x.ID){
+					log.Printf("Migrate key %v from node %v to node %v", kid,ch.successor.ID,x.ID)
 					var v string
 					ch.successor.Get(k,&v)
 					var ok bool
 					xclient.Set(db.KV{k,v},&ok)
 				}
 			}
-			log.Printf("[%v] sets successor %v", ch.GetID(), x.ID)
+			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
 			ch.successor = xclient
 			//unlock kv service
 			ch.kvLock.Unlock()
