@@ -199,8 +199,7 @@ class Visualizer(tk.Tk):
         self.canvas = tk.Canvas(self, width=800, height=600, bg='white')
         self.canvas.pack()
         self.draws = {}
-        self.news = ""
-        self.news_flag = False
+        self.news = "Latest event:"
         self.tk_news = None
         self.title("You see the Chord!")
         self.bind('<Destroy>', self.kill)
@@ -218,18 +217,29 @@ class Visualizer(tk.Tk):
         self.worker.start()
 
     def update_news(self, news):
-        if news == self.news:
-            return
-        self.news = news
         with self.cond:
-            self.news_flag = True
-            self.cond.notify()
+            if news == self.news:
+                return
+            self.news = news
+            if self.tk_news is not None:
+                self.canvas.delete(self.tk_news)
+            self.tk_news = self.canvas.create_text(
+                self.width*8//10,
+                self.height*9//10,
+                text="Latest event: {}".format(self.news),
+                font=font.Font(family='Helvetica', size=18, weight='bold')
+            )
+            self.canvas.update()
 
     def update_node(self, nid, predecessor=None, successor=None, highlight=None):
         with self.cond:
             self.ring.update_node(nid, predecessor=predecessor,
                                   successor=successor, highlight=highlight)
-            self.cond.notify()
+            if nid not in self.draws:
+                self.draws[nid] = ChordDrawer(self.canvas, self.width,
+                                              self.height)
+            self.draws[nid].update(self.ring.ring[nid])
+            self.canvas.update()
 
     def listen(self):
         server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
@@ -247,8 +257,6 @@ class Visualizer(tk.Tk):
                         server.stop(0)
                         print("Stop listening {}".format(self.addr))
                         return
-                    self.plot_news()
-                    self.plot_ring()
                     self.cond.wait()
         except KeyboardInterrupt:
             server.stop(0)
@@ -257,31 +265,6 @@ class Visualizer(tk.Tk):
         with self.cond:
             self.stop = True
             self.cond.notify()
-
-    def plot_ring(self):
-        # clear canvas
-        # self.canvas.delete("all")
-        for k, v in self.draws.items():
-            if k not in self.ring.ring:
-                v.delete()
-
-        for k, v in self.ring.ring.items():
-            if k not in self.draws:
-                self.draws[k] = ChordDrawer(self.canvas, self.width,
-                                            self.height)
-            self.draws[k].update(v)
-
-    def plot_news(self):
-        if self.news_flag:
-            self.news_flag = False
-            self.canvas.delete(self.tk_news)
-            self.tk_news = self.canvas.create_text(min(self.width//10, 50),
-                                                   min(self.height//10, 50),
-                                                   text=self.news,
-                                                   font=font.Font(
-                                                       family='Helvetica',
-                                                       size=18,
-                                                       weight='bold'))
 
 
 if __name__ == "__main__":
