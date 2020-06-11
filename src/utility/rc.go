@@ -8,11 +8,11 @@ import (
 )
 
 const (
-	DefaultPath = "backs.rc"
+	DefaultPath = "nodes.rc"
 )
 
 type RC struct {
-	Backs []string
+	Nodes []string
 }
 
 // Load runtime configuration files.

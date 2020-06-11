@@ -7,11 +7,9 @@ import (
 	"time"
 
 	"utility"
-	"chord/client"
 	"chord/db"
-)
-const (
-	DefaultPath = "backs.rc"
+	"chord/ring"
+	"chord/hash"
 )
 
 func noError(e error) {
@@ -19,15 +17,20 @@ func noError(e error) {
 		log.Fatal(e)
 	}
 }
-func run(addr string) {
-	backConfig := db.BackConfig {
-		Addr: addr,
-		Store: db.NewStore(),
-	}
 
-	log.Printf("back-end serving on %s", backConfig.Addr)
-	noError(client.ServeBack(&backConfig))
+func run(ip, ap string) {
 
+	ch := ring.NewChord(ip, ap, db.NewStore())
+	go func() {
+		if e := ch.Init(); e != nil {
+			log.Fatal("service not ready, timed out")
+		}
+
+		ready := make(chan bool)
+		if e := ch.Serve(ready); e != nil {
+			log.Fatal(e)
+		}
+	}()
 }
 
 func main() {
@@ -37,22 +40,36 @@ func main() {
 
 
 	// load the runtime configuration from `DefaultPath`
-	rc, e := utility.LoadRC(DefaultPath)
+	rc, e := utility.LoadRC(utility.DefaultPath)
 	noError(e)
 
 	if len(args) == 0 {
-		for _, addr := range rc.Backs {
-			go run(addr)
+		// scan for address on this machine
+		ap := ""
+		for _, ip := range rc.Nodes {
+			go run(ip, ap)
+			ap = ip
 			time.Sleep(1*time.Second)
 		}
 	} else {
+		ap := getAP(rc)
 		for _, a := range args {
 			i, e := strconv.Atoi(a)
 			noError(e)
 
-			go run(rc.Backs[i])
+			go run(rc.Nodes[i], ap)
 		}
 	}
 	select {}
 
+}
+
+func getAP(rc *utility.RC) string {
+	for _, ip := range rc.Nodes {
+		client := ring.NewChordClient(ip, hash.EncodeKey(ip))
+		if e := client.Dial(); e == nil {
+			return ip
+		}
+	}
+	return ""
 }
