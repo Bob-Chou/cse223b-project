@@ -34,25 +34,36 @@ class ChordListener(chord_message_pb2_grpc.ChordUpdateServicer):
             vs.update_node(request.nid, highlight=hi)
             print("{} set highlight {}".format(request.nid, hi))
         elif request.verb == 4:
+            kv = {request.key: request.value}
+            vs.update_node(request.nid, add_kv=kv)
+            print("{} set key {}: \"{}\"".format(
+                request.nid, request.key, request.value))
+        elif request.verb == 5:
             vs.update_news(request.value)
             print("news: {}".format(request.value))
+
 
         return chord_message_pb2.ChordReply(reply=True)
 
 
 class Chord:
-    def __init__(self, id, predecessor=-1, successor=-1, highlight=False):
+    def __init__(self, id, predecessor=-1, successor=-1, highlight=False,
+                 kv=None):
         self.id = id
         self.predecessor = predecessor
         self.successor = successor
         self.highlight = highlight
+        self.kv = {}
+        if kv is not None:
+            self.kv = kv
 
 
 class Ring:
     def __init__(self):
         self.ring = {}
 
-    def update_node(self, nid, predecessor=None, successor=None, highlight=None):
+    def update_node(self, nid, predecessor=None, successor=None, highlight=None,
+                    add_kv=None):
         if nid in self.ring:
             if predecessor != None:
                 self.ring[nid].predecessor = predecessor
@@ -60,6 +71,9 @@ class Ring:
                 self.ring[nid].successor = successor
             if highlight is not None:
                 self.ring[nid].highlight = highlight
+            if add_kv is not None:
+                for k, v in add_kv.items():
+                    self.ring[nid].kv[k] = v
         else:
             p, s = -1, -1
             h = False
@@ -69,7 +83,8 @@ class Ring:
                 s = successor
             if highlight is not None:
                 h = highlight
-            self.ring[nid] = Chord(nid, predecessor=p, successor=s, highlight=h)
+            self.ring[nid] = Chord(nid, predecessor=p, successor=s, highlight=h,
+                                   kv=add_kv)
 
     def get_ring(self):
         ret = self.ring.values()
@@ -97,6 +112,7 @@ class ChordDrawer:
         self.tk_succ = None
         self.tk_pred = None
         self.tk_hl = None
+        self.tk_kv = {}
 
     def ring_loc(self, x, y, r, theta):
         x = math.floor(x + r * math.sin(theta))
@@ -118,17 +134,11 @@ class ChordDrawer:
 
         # node plot and text plot
         if self.check(node.id) and self.nid != node.id:
-
-            if self.tk_node is not None:
-                self.canvas.delete(self.tk_node)
-                self.tk_node = None
+            self.delete()
             self.nid = node.id
             self.tk_node = self.canvas.create_oval(cx - cr, cy - cr, cx + cr,
                                                    cy + cr, fill="yellow")
 
-            if self.tk_text is not None:
-                self.canvas.delete(self.tk_text)
-                self.tk_text = None
             tx, ty = self.ring_loc(cx, cy, 30, theta)
             self.tk_text = self.canvas.create_text(tx, ty,
                                                    text="{}".format(node.id),
@@ -176,6 +186,32 @@ class ChordDrawer:
             self.tk_pred = self.canvas.create_line(x, y, px, py, fill="blue",
                                                    arrow=tk.LAST)
 
+        # kv plot
+        is_sub = all([k in node.kv for k in self.tk_kv.keys()])
+        if not is_sub:
+            for k in self.tk_kv.keys():
+                self.canvas.delete(self.tk_kv[k])
+            self.tk_kv = {}
+
+        for k, v in node.kv.items():
+            if k in self.tk_kv:
+                self.canvas.itemconfigure(self.tk_kv[k],
+                                          text="{}: \"{}\"".format(k, v))
+            else:
+                kx, ky = self.ring_loc(cx, cy, 4*cr, theta+math.pi)
+                ky += (2*(len(self.tk_kv)%2)-1) * ((len(self.tk_kv)+1)//2) * 12
+                plotk = self.canvas.create_text(
+                    kx, ky,
+                    text="{}: \"{}\"".format(k, v),
+                    font=font.Font(
+                        family='Helvetica',
+                        size=12,
+                        weight='bold',
+                    ),
+                    fill="#696969"
+                )
+                self.tk_kv[k] = plotk
+
     def delete(self):
         if self.tk_node is not None:
             self.canvas.delete(self.tk_node)
@@ -187,6 +223,9 @@ class ChordDrawer:
             self.canvas.delete(self.tk_succ)
         if self.tk_hl is not None:
             self.canvas.delete(self.tk_hl)
+        for k in self.tk_kv.keys():
+            if self.tk_kv[k] is not None:
+                self.canvas.delete(self.tk_kv[k])
 
 
 class Visualizer(tk.Tk):
@@ -231,10 +270,12 @@ class Visualizer(tk.Tk):
             )
             self.canvas.update()
 
-    def update_node(self, nid, predecessor=None, successor=None, highlight=None):
+    def update_node(self, nid, predecessor=None, successor=None, highlight=None,
+                    add_kv=None):
         with self.cond:
             self.ring.update_node(nid, predecessor=predecessor,
-                                  successor=successor, highlight=highlight)
+                                  successor=successor, highlight=highlight,
+                                  add_kv=add_kv)
             if nid not in self.draws:
                 self.draws[nid] = ChordDrawer(self.canvas, self.width,
                                               self.height)

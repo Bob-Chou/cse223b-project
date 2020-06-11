@@ -11,10 +11,12 @@ message ChordMessage {
         SET_SUCC = 1;
         SET_PRED = 2;
         SET_HLGHT = 3;
-        NEWS = 4;
+        SET_KEY = 4;
+        NEWS = 5;
     }
     ChordVerb verb = 2;
     string value = 3;
+    string key = 4;
 }
 
 message ChordReply {
