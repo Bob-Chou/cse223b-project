@@ -25,6 +25,8 @@ type NodeEntry interface {
 	Get(k string, v *string) error
 	// Set returns true if the kv is successfully set in the storage
 	Set(kv db.KV, ok *bool) error
+	// Keys
+  Keys(p db.Pattern, list *db.List) error
 }
 
 // Node is used as the entity of a remote chord node

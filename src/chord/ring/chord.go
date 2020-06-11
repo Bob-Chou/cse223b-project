@@ -40,7 +40,6 @@ type Chord struct {
 	chain []Node
 	// backend storage
 	storage db.Storage
-
 	// kv lock
 	kvLock   sync.Mutex
 }
@@ -73,10 +72,29 @@ func(ch *Chord) Join(node Node) {
 // the successor about n.
 func(ch *Chord) Stabilize() {
 	var x NodeInfo
-	if e := ch.successor.Previous(ch.successor.GetID(), &x); e == nil {
-		if In(x.ID,ch.ID,ch.successor.GetID()){
-			log.Printf("[%v] sets successor %v", ch.GetID(), x.ID)
-			ch.successor = NewChordClient(x.IP,x.ID)
+	if e := ch.successor.Previous(ch.successor.ID, &x); e == nil {
+		xclient:=NewChordClient(x.IP,x.ID)
+		if In(x.ID,ch.ID,ch.successor.ID){
+			//lock kv service
+			ch.kvLock.Lock()
+			var l db.List
+			ch.successor.Keys(db.Pattern{"",""},&l)
+			for i:= range l.L {
+				k:=l.L[i]
+				kid:=hash.EncodeKey(k)
+				//need to migrate to x
+				if RIn(kid,ch.ID,x.ID){
+					log.Printf("Migrate key %v from node %v to node %v", kid,ch.successor.ID,x.ID)
+					var v string
+					ch.successor.Get(k,&v)
+					var ok bool
+					xclient.Set(db.KV{k,v},&ok)
+				}
+			}
+			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+			ch.successor = xclient
+			//unlock kv service
+			ch.kvLock.Unlock()
 		}
 	} else if !ErrNotFound.Equals(e) {
 		panic(e)
@@ -151,6 +169,7 @@ func(ch *Chord) keys(p db.Pattern, list *db.List) error {
 
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
+  
 	ch.kvLock.Lock()
 	defer ch.kvLock.Unlock()
 
@@ -199,6 +218,11 @@ func(ch *Chord) Set(kv db.KV, ok *bool) error {
 	}
 
 	return nil
+}
+
+// Keys wraps the RPC interface db.Storage.Keys
+func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
+	return ch.storage.Keys(p, list)
 }
 
 // Notify wraps the RPC interface of NodeEntry.Notify
