@@ -225,6 +225,14 @@ func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
 	return ch.storage.Keys(p, list)
 }
 
+func(ch *Chord) CGet(k string, v *string) error {
+	return ch.Get(k, v)
+}
+
+func(ch *Chord) CSet(kv db.KV, ok *bool) error {
+	return ch.Set(kv, ok)
+}
+
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){

@@ -63,11 +63,11 @@ func runCmd(args []string, ap string) bool {
 	switch cmd {
 	case "get":
 		var v string
-		logError(ch.Get(getPara(args), &v))
+		logError(ch.CGet(getPara(args), &v))
 		fmt.Println(v)
 	case "set":
 		var ok bool
-		logError(ch.Set(setPara(args), &ok))
+		logError(ch.CSet(setPara(args), &ok))
 		fmt.Println(ok)
 	}
 	return false

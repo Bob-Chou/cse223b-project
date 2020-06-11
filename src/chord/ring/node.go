@@ -26,7 +26,12 @@ type NodeEntry interface {
 	// Set returns true if the kv is successfully set in the storage
 	Set(kv db.KV, ok *bool) error
 	// Keys
-  Keys(p db.Pattern, list *db.List) error
+	Keys(p db.Pattern, list *db.List) error
+
+	// Get returns the value of a particular k
+	CGet(k string, v *string) error
+	// Set returns true if the kv is successfully set in the storage
+	CSet(kv db.KV, ok *bool) error
 }
 
 // Node is used as the entity of a remote chord node

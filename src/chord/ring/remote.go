@@ -134,6 +134,21 @@ func(c *ChordClient) Set(kv db.KV, ok *bool) error {
 	return c.rpc(name, kv, ok)
 }
 
+// Get wraps the RPC interface of NodeEntry.Get
+func(c *ChordClient) CGet(k string, v *string) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CGet"
+	return c.rpc(name, k, v)
+}
+
+func(c *ChordClient) CSet(kv db.KV, ok *bool) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CSet"
+	return c.rpc(name, kv, ok)
+}
+
 // NewChordClient returns a pointer to a ChordClient
 func NewChordClient(ip string, id uint64) *ChordClient {
 	return &ChordClient{
@@ -184,6 +199,14 @@ func(c *ChordServer) Set(kv db.KV, ok *bool) error {
 
 func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
 	return c.entry.keys(p,list)
+}
+
+func(c *ChordServer) CGet(k string, v *string) error {
+	return c.entry.CGet(k, v)
+}
+
+func(c *ChordServer) CSet(kv db.KV, ok *bool) error {
+	return c.entry.CSet(kv, ok)
 }
 
 var _ NodeEntry = new(ChordClient)
