@@ -9,13 +9,12 @@ import (
 )
 
 const (
-	MaxBacks 	= 256	//TODO
+	MaxNodes 	= 1 << 16
 	Hostname 	= "localhost"
-	DefaultPath = "backs.rc"
 )
 
 var (
-	nback = flag.Int("nbacks", 1, "number of back-ends")		// flag nbacks with default value 1
+	nnodes = flag.Int("nnodes", 1, "number of nodes")		// flag nnodes with default value 1
 )
 
 func main() {
@@ -26,23 +25,23 @@ func main() {
 		flag.Usage()
 	}
 
-	// check if the number of back-ends is valid
-	if *nback > MaxBacks {
-		log.Fatal("too many backs")
+	// check if the number of nodes is valid
+	if *nnodes > MaxNodes {
+		log.Fatal("too many nodes")
 	}
 
 	// create the runtime configuration
-	rc := utility.RC{Backs: make([]string, *nback)}
+	rc := utility.RC{Nodes: make([]string, *nnodes)}
 
-	// create `nbacks` port starting from `port`
+	// create `nnodes` port starting from `port`
 	port := utility.RandPort()
-	for i := 0; i < *nback; i++ {
-		rc.Backs[i] = Hostname + ":" + strconv.Itoa(port)
+	for i := 0; i < *nnodes; i++ {
+		rc.Nodes[i] = Hostname + ":" + strconv.Itoa(port)
 		port++
 	}
 
 	// save the configuration into the file `DefaultPath`
-	if e := rc.Save(DefaultPath); e != nil {
+	if e := rc.Save(utility.DefaultPath); e != nil {
 		log.Fatal(e)
 	}
 }

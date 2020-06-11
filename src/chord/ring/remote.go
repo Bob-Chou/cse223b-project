@@ -63,6 +63,11 @@ func(c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
 	return nil
 }
 
+// Dial uses to check if the node is able to serve
+func(c *ChordClient) Dial() error {
+	return c.dial()
+}
+
 // GetID wraps Node.GetID
 func(c *ChordClient) GetID() uint64 {
 	return c.ID
@@ -105,7 +110,7 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
-// Previous wraps the RPC interface of NodeEntry.Previous
+// Get wraps the RPC interface of NodeEntry.Get
 func(c *ChordClient) Get(k string, v *string) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
@@ -117,6 +122,21 @@ func(c *ChordClient) Set(kv db.KV, ok *bool) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.Set"
+	return c.rpc(name, kv, ok)
+}
+
+// Get wraps the RPC interface of NodeEntry.Get
+func(c *ChordClient) CGet(k string, v *string) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CGet"
+	return c.rpc(name, k, v)
+}
+
+func(c *ChordClient) CSet(kv db.KV, ok *bool) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CSet"
 	return c.rpc(name, kv, ok)
 }
 
@@ -170,6 +190,14 @@ func(c *ChordServer) Set(kv db.KV, ok *bool) error {
 
 func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
 	return c.entry.keys(p,list)
+}
+
+func(c *ChordServer) CGet(k string, v *string) error {
+	return c.entry.CGet(k, v)
+}
+
+func(c *ChordServer) CSet(kv db.KV, ok *bool) error {
+	return c.entry.CSet(kv, ok)
 }
 
 var _ NodeEntry = new(ChordClient)

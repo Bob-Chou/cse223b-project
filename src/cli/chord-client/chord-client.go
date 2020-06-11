@@ -4,18 +4,46 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"log"
+	"strconv"
 
 	"chord/db"
-	"chord/client"
+	"chord/ring"
+	"chord/hash"
+	"utility"
 )
 
-func logError(e error) {
+var (
+	usage = "usage: \n" +
+		"\tchord-client get `key` || chord-client set `key` `value`\n" +
+		"\tchord-client i get `key` || chord-client i set `key` `value`"
+)
+
+func noError(e error) {
 	if e != nil {
-		fmt.Fprintln(os.Stderr, e)
+		log.Fatal(e)
 	}
 }
 
-// used for get
+func checkAP(ap string) error {
+	client := ring.NewChordClient(ap, hash.EncodeKey(ap))
+	if e := client.Dial(); e != nil {
+		return fmt.Errorf("[%v] node is not ready!", ap)
+	}
+	return nil
+}
+
+// getAP uses to get the access point of nodes
+func getAP(rc *utility.RC) string {
+	for _, ip := range rc.Nodes {
+		if checkAP(ip) == nil {
+			return ip
+		}
+	}
+	return ""
+}
+
+// getPara is used to generate a parameter in `get`
 func getPara(args []string) string {
 	if len(args) == 1 {
 		return ""
@@ -23,7 +51,7 @@ func getPara(args []string) string {
 	return args[1]
 }
 
-// used for the parameter passed in set
+// setPara is used to generate a parameter in `set`
 func setPara(args []string) db.KV {
 	if len(args) == 1 {
 		return db.KV{K:"", V:""}
@@ -33,39 +61,24 @@ func setPara(args []string) db.KV {
 	return db.KV{K:args[1], V:args[2]}
 }
 
-func keysPara(args []string) db.Pattern {
-	if len(args) == 1 {
-		return db.Pattern{Prefix: "", Suffix: ""}
-	} else if len(args) == 2 {
-		return db.Pattern{args[1],""}
-	}
-	return db.Pattern{Prefix:args[1], Suffix:args[2]}
-}
+func runCmd(args []string, ap string) bool {
+	// access point of chord
+	ch := ring.NewChordClient(ap, hash.EncodeKey(ap))
 
-func runCmd(storage db.Storage, args []string) bool {
-	// the command for get / set / keys
+	// the command for get / set
 	cmd := args[0]
 	switch cmd {
 	case "get":
 		var v string
-		logError(storage.Get(getPara(args), &v))
+		noError(ch.CGet(getPara(args), &v))
 		fmt.Println(v)
 	case "set":
 		var ok bool
-		logError(storage.Set(setPara(args), &ok))
+		noError(ch.CSet(setPara(args), &ok))
 		fmt.Println(ok)
-	case "keys":
-		var keys db.List
-		pattern :=keysPara(args)
-		storage.Keys(pattern, &keys)
-		//logError()
-		for _, key := range keys.L {
-			fmt.Println(key)
-		}
 	}
 	return false
 }
-
 
 func main() {
 	// parse command line
@@ -74,19 +87,23 @@ func main() {
 	// non-flag command-line arguments
 	args := flag.Args()
 	if len(args) < 1 {
-		// TODO add usage
-		//fmt.Fprintln(os.Stderr, help)
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 
-	addr := args[0]
-	storage := client.NewClient(addr)
+	// load the runtime configuration from `DefaultPath`
+	rc, e := utility.LoadRC(utility.DefaultPath)
+	noError(e)
 
-	cmdArgs := args[1:]
-	if len(cmdArgs) == 0 {
-		// TODO add usage
-		fmt.Println("no args")
+	i, e := strconv.Atoi(args[0])
+	// usage 1 or usage 2
+	if e != nil {
+		// first alive nodes as the access point
+		ap := getAP(rc)
+		runCmd(args, ap)
 	} else {
-		runCmd(storage, cmdArgs)
+		ap:= rc.Nodes[i]
+		noError(checkAP(ap))
+		runCmd(args[1:], ap)
 	}
 }

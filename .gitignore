@@ -12,7 +12,7 @@
 *.out
 
 # Back-ends ip addresses
-src/backs.rc
+src/nodes.rc
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
