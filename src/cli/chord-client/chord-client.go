@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"log"
+	"strconv"
 
 	"chord/db"
 	"chord/ring"
@@ -13,7 +14,9 @@ import (
 )
 
 var (
-	usage = "usage: chord-client get `key` || chord-client set `key` `value`"
+	usage = "usage: \n" +
+		"\tchord-client get `key` || chord-client set `key` `value`\n" +
+		"\tchord-client i get `key` || chord-client i set `key` `value`"
 )
 
 func noError(e error) {
@@ -21,13 +24,26 @@ func noError(e error) {
 		log.Fatal(e)
 	}
 }
-func logError(e error) {
-	if e != nil {
-		fmt.Fprintln(os.Stderr, e)
+
+func checkAP(ap string) error {
+	client := ring.NewChordClient(ap, hash.EncodeKey(ap))
+	if e := client.Dial(); e != nil {
+		return fmt.Errorf("[%v] node is not ready!", ap)
 	}
+	return nil
 }
 
-// used for get
+// getAP uses to get the access point of nodes
+func getAP(rc *utility.RC) string {
+	for _, ip := range rc.Nodes {
+		if checkAP(ip) == nil {
+			return ip
+		}
+	}
+	return ""
+}
+
+// getPara is used to generate a parameter in `get`
 func getPara(args []string) string {
 	if len(args) == 1 {
 		return ""
@@ -35,7 +51,7 @@ func getPara(args []string) string {
 	return args[1]
 }
 
-// used for the parameter passed in set
+// setPara is used to generate a parameter in `set`
 func setPara(args []string) db.KV {
 	if len(args) == 1 {
 		return db.KV{K:"", V:""}
@@ -45,34 +61,24 @@ func setPara(args []string) db.KV {
 	return db.KV{K:args[1], V:args[2]}
 }
 
-func keysPara(args []string) db.Pattern {
-	if len(args) == 1 {
-		return db.Pattern{Prefix: "", Suffix: ""}
-	} else if len(args) == 2 {
-		return db.Pattern{args[1],""}
-	}
-	return db.Pattern{Prefix:args[1], Suffix:args[2]}
-}
-
 func runCmd(args []string, ap string) bool {
-	// the command for get / set / keys
-	cmd := args[0]
-
-	//ch := ring.NewChord(ap, "", db.NewStore())
+	// access point of chord
 	ch := ring.NewChordClient(ap, hash.EncodeKey(ap))
+
+	// the command for get / set
+	cmd := args[0]
 	switch cmd {
 	case "get":
 		var v string
-		logError(ch.CGet(getPara(args), &v))
+		noError(ch.CGet(getPara(args), &v))
 		fmt.Println(v)
 	case "set":
 		var ok bool
-		logError(ch.CSet(setPara(args), &ok))
+		noError(ch.CSet(setPara(args), &ok))
 		fmt.Println(ok)
 	}
 	return false
 }
-
 
 func main() {
 	// parse command line
@@ -85,30 +91,19 @@ func main() {
 		os.Exit(1)
 	}
 
-	/*
-		1. loop through the rc back to find the first alive nodes
-		2. run the cmd get / set
-	*/
-
 	// load the runtime configuration from `DefaultPath`
 	rc, e := utility.LoadRC(utility.DefaultPath)
 	noError(e)
 
-	// first alive nodes as the access point
-	ap := getAP(rc)
-
-	fmt.Print(args)
-	fmt.Print(ap)
-	runCmd(args, ap)
-
-}
-
-func getAP(rc *utility.RC) string {
-	for _, ip := range rc.Nodes {
-		client := ring.NewChordClient(ip, hash.EncodeKey(ip))
-		if e := client.Dial(); e == nil {
-			return ip
-		}
+	i, e := strconv.Atoi(args[0])
+	// usage 1 or usage 2
+	if e != nil {
+		// first alive nodes as the access point
+		ap := getAP(rc)
+		runCmd(args, ap)
+	} else {
+		ap:= rc.Nodes[i]
+		noError(checkAP(ap))
+		runCmd(args[1:], ap)
 	}
-	return ""
 }

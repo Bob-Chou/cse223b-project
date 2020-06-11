@@ -65,16 +65,7 @@ func(c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
 
 // Dial uses to check if the node is able to serve
 func(c *ChordClient) Dial() error {
-	c.connLock.Lock()
-	defer c.connLock.Unlock()
-	if c.conn == nil {
-		conn, e := rpc.Dial("tcp", c.IP)
-		if e != nil {
-			return e
-		}
-		c.conn = conn
-	}
-	return nil
+	return c.dial()
 }
 
 // GetID wraps Node.GetID
