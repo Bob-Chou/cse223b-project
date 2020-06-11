@@ -119,7 +119,7 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
-// Previous wraps the RPC interface of NodeEntry.Previous
+// Get wraps the RPC interface of NodeEntry.Get
 func(c *ChordClient) Get(k string, v *string) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]

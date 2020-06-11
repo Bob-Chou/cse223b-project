@@ -4,11 +4,23 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"log"
 
 	"chord/db"
-	"chord/client"
+	"chord/ring"
+	"chord/hash"
+	"utility"
 )
 
+var (
+	usage = "usage: chord-client get `key` || chord-client set `key` `value`"
+)
+
+func noError(e error) {
+	if e != nil {
+		log.Fatal(e)
+	}
+}
 func logError(e error) {
 	if e != nil {
 		fmt.Fprintln(os.Stderr, e)
@@ -42,26 +54,21 @@ func keysPara(args []string) db.Pattern {
 	return db.Pattern{Prefix:args[1], Suffix:args[2]}
 }
 
-func runCmd(storage db.Storage, args []string) bool {
+func runCmd(args []string, ap string) bool {
 	// the command for get / set / keys
 	cmd := args[0]
+
+	//ch := ring.NewChord(ap, "", db.NewStore())
+	ch := ring.NewChordClient(ap, hash.EncodeKey(ap))
 	switch cmd {
 	case "get":
 		var v string
-		logError(storage.Get(getPara(args), &v))
+		logError(ch.Get(getPara(args), &v))
 		fmt.Println(v)
 	case "set":
 		var ok bool
-		logError(storage.Set(setPara(args), &ok))
+		logError(ch.Set(setPara(args), &ok))
 		fmt.Println(ok)
-	case "keys":
-		var keys db.List
-		pattern :=keysPara(args)
-		storage.Keys(pattern, &keys)
-		//logError()
-		for _, key := range keys.L {
-			fmt.Println(key)
-		}
 	}
 	return false
 }
@@ -74,19 +81,34 @@ func main() {
 	// non-flag command-line arguments
 	args := flag.Args()
 	if len(args) < 1 {
-		// TODO add usage
-		//fmt.Fprintln(os.Stderr, help)
+		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 
-	addr := args[0]
-	storage := client.NewClient(addr)
+	/*
+		1. loop through the rc back to find the first alive nodes
+		2. run the cmd get / set
+	*/
 
-	cmdArgs := args[1:]
-	if len(cmdArgs) == 0 {
-		// TODO add usage
-		fmt.Println("no args")
-	} else {
-		runCmd(storage, cmdArgs)
+	// load the runtime configuration from `DefaultPath`
+	rc, e := utility.LoadRC(utility.DefaultPath)
+	noError(e)
+
+	// first alive nodes as the access point
+	ap := getAP(rc)
+
+	fmt.Print(args)
+	fmt.Print(ap)
+	runCmd(args, ap)
+
+}
+
+func getAP(rc *utility.RC) string {
+	for _, ip := range rc.Nodes {
+		client := ring.NewChordClient(ip, hash.EncodeKey(ip))
+		if e := client.Dial(); e == nil {
+			return ip
+		}
 	}
+	return ""
 }
