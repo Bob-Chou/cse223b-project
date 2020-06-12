@@ -3,7 +3,6 @@ package visual
 import (
 	"fmt"
 	"go_protoc"
-	"log"
 	"testing"
 	"time"
 
@@ -14,7 +13,7 @@ import (
 func TestVisualize(t *testing.T) {
 	conn, err := grpc.Dial("localhost:6008", grpc.WithInsecure())
 	if err != nil {
-		log.Fatal(err)
+		t.Fatal(err)
 	}
 	defer conn.Close()
 
@@ -27,7 +26,7 @@ func TestVisualize(t *testing.T) {
 			Value: "",
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		<-time.After(500 * time.Millisecond)
@@ -40,7 +39,7 @@ func TestVisualize(t *testing.T) {
 			Value: fmt.Sprintf("%v", uint64((i*gap+gap)%(10*gap))),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		<-time.After(500 * time.Millisecond)
@@ -53,7 +52,7 @@ func TestVisualize(t *testing.T) {
 			Value: fmt.Sprintf("%v", uint64((10*gap+i*gap-gap)%(10*gap))),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		<-time.After(500 * time.Millisecond)
@@ -66,7 +65,7 @@ func TestVisualize(t *testing.T) {
 			Value: "1",
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		<-time.After(500 * time.Millisecond)
@@ -79,7 +78,7 @@ func TestVisualize(t *testing.T) {
 			Value: "0",
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 
 		<-time.After(500 * time.Millisecond)
@@ -93,7 +92,7 @@ func TestVisualize(t *testing.T) {
 			Key:   fmt.Sprintf("%v", i*gap),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 		<-time.After(500 * time.Millisecond)
 
@@ -104,7 +103,7 @@ func TestVisualize(t *testing.T) {
 			Key:   fmt.Sprintf("%v", i*gap),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 		<-time.After(500 * time.Millisecond)
 
@@ -115,7 +114,7 @@ func TestVisualize(t *testing.T) {
 			Key:   fmt.Sprintf("%v", i*gap+2),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 		<-time.After(500 * time.Millisecond)
 
@@ -126,8 +125,33 @@ func TestVisualize(t *testing.T) {
 			Key:   fmt.Sprintf("%v", i*gap+3),
 		})
 		if err != nil {
-			log.Fatal(err)
+			t.Fatal(err)
 		}
 		<-time.After(500 * time.Millisecond)
+	}
+
+	for i := 0; i < 10; i++ {
+		_, err := client.Update(context.Background(), &go_protoc.ChordMessage{
+			Nid:   uint64(i * gap),
+			Verb:  go_protoc.ChordMessage_DEAD_NODE,
+			Value: fmt.Sprintf("%v", i*gap),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		<-time.After(500 * time.Millisecond)
+	}
+
+	// double delete should not return error
+	for i := 0; i < 10; i++ {
+		_, err := client.Update(context.Background(), &go_protoc.ChordMessage{
+			Nid:   uint64(i * gap),
+			Verb:  go_protoc.ChordMessage_DEAD_NODE,
+			Value: fmt.Sprintf("%v", i*gap),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

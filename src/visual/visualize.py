@@ -22,26 +22,29 @@ class ChordListener(chord_message_pb2_grpc.ChordUpdateServicer):
             vs.update_node(request.nid)
             print("{} joins".format(request.nid))
         elif request.verb == 1:
+            nid = int(request.value)
+            vs.delete_node(nid)
+            print("dead node: {}".format(request.value))
+        elif request.verb == 2:
             succ_id = int(request.value)
             vs.update_node(request.nid, successor=succ_id)
             print("{} set succ {}".format(request.nid, succ_id))
-        elif request.verb == 2:
+        elif request.verb == 3:
             pred_id = int(request.value)
             vs.update_node(request.nid, predecessor=pred_id)
             print("{} set pred {}".format(request.nid, pred_id))
-        elif request.verb == 3:
+        elif request.verb == 4:
             hi = request.value == "1"
             vs.update_node(request.nid, highlight=hi)
             print("{} set highlight {}".format(request.nid, hi))
-        elif request.verb == 4:
+        elif request.verb == 5:
             kv = {request.key: request.value}
             vs.update_node(request.nid, add_kv=kv)
             print("{} set key {}: \"{}\"".format(
                 request.nid, request.key, request.value))
-        elif request.verb == 5:
+        elif request.verb == 6:
             vs.update_news(request.value)
             print("news: {}".format(request.value))
-
 
         return chord_message_pb2.ChordReply(reply=True)
 
@@ -95,6 +98,10 @@ class Ring:
         if nid in self.ring:
             return self.ring[nid]
         return None
+
+    def delete(self, nid):
+        if nid in self.ring:
+            del self.ring[nid]
 
 
 class ChordDrawer:
@@ -198,8 +205,8 @@ class ChordDrawer:
                 self.canvas.itemconfigure(self.tk_kv[k],
                                           text="{}: \"{}\"".format(k, v))
             else:
-                kx, ky = self.ring_loc(cx, cy, 4*cr, theta+math.pi)
-                ky += (2*(len(self.tk_kv)%2)-1) * ((len(self.tk_kv)+1)//2) * 12
+                kx, ky = self.ring_loc(cx, cy, 4 * cr, theta + math.pi)
+                ky += (2 * (len(self.tk_kv) % 2) - 1) * ((len(self.tk_kv) + 1) // 2) * 12
                 plotk = self.canvas.create_text(
                     kx, ky,
                     text="{}: \"{}\"".format(k, v),
@@ -263,8 +270,8 @@ class Visualizer(tk.Tk):
             if self.tk_news is not None:
                 self.canvas.delete(self.tk_news)
             self.tk_news = self.canvas.create_text(
-                self.width*8//10,
-                self.height*9//10,
+                self.width * 8 // 10,
+                self.height * 9 // 10,
                 text="Latest event: {}".format(self.news),
                 font=font.Font(family='Helvetica', size=18, weight='bold')
             )
@@ -280,6 +287,16 @@ class Visualizer(tk.Tk):
                 self.draws[nid] = ChordDrawer(self.canvas, self.width,
                                               self.height)
             self.draws[nid].update(self.ring.ring[nid])
+            self.canvas.update()
+
+    def delete_node(self, nid):
+        with self.cond:
+            print("deleting {}".format(nid))
+            if nid in self.draws:
+                print("deleting draw {}".format(nid))
+                self.draws[nid].delete()
+                del self.draws[nid]
+            self.ring.delete(nid)
             self.canvas.update()
 
     def listen(self):

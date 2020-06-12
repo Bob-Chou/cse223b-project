@@ -4,7 +4,6 @@ import (
 	"chord/hash"
 	"chord/ring"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"testing"
 	"time"

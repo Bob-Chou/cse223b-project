@@ -208,6 +208,16 @@ func(ch *Chord) CheckPredecessor() {
 	}
 	pre := ch.predecessor
 	if !ch.Ping(pre) {
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   ch.ID,
+			Verb: visual.NEWS,
+			Value: fmt.Sprintf("Node %v is dead", pre.GetID()),
+		})
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   ch.ID,
+			Verb: visual.DEAD_NODE,
+			Value: fmt.Sprintf("%v", pre.GetID()),
+		})
 		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
 		ch.predecessor = nil
 	}

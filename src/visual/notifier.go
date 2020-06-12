@@ -9,6 +9,7 @@ import (
 
 const (
     NEW_NODE = go_protoc.ChordMessage_NEW_NODE
+    DEAD_NODE = go_protoc.ChordMessage_DEAD_NODE
     SET_SUCC = go_protoc.ChordMessage_SET_SUCC
     SET_PRED = go_protoc.ChordMessage_SET_PRED
     SET_HLGHT = go_protoc.ChordMessage_SET_HLGHT

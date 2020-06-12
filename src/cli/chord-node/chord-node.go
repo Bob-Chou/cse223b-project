@@ -27,7 +27,8 @@ func run(ip, ap string) {
 		}
 
 		ready := make(chan bool)
-		if e := ch.Serve(ready); e != nil {
+		kill := make(chan bool)
+		if e := ch.Serve(ready, kill); e != nil {
 			log.Fatal(e)
 		}
 	}()
