@@ -8,11 +8,12 @@ message ChordMessage {
     uint64 nid = 1;
     enum ChordVerb {
         NEW_NODE = 0;
-        SET_SUCC = 1;
-        SET_PRED = 2;
-        SET_HLGHT = 3;
-        SET_KEY = 4;
-        NEWS = 5;
+        DEAD_NODE = 1;
+        SET_SUCC = 2;
+        SET_PRED = 3;
+        SET_HLGHT = 4;
+        SET_KEY = 5;
+        NEWS = 6;
     }
     ChordVerb verb = 2;
     string value = 3;
