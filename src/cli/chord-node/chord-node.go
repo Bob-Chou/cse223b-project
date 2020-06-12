@@ -53,10 +53,15 @@ func main() {
 		}
 	} else {
 		ap := getAP(rc)
-		for _, a := range args {
+		for n, a := range args {
 			i, e := strconv.Atoi(a)
 			noError(e)
-
+			if n != 0 {
+				for ap == "" {
+					<-time.After(500 * time.Millisecond)
+					ap = getAP(rc)
+				}
+			}
 			go run(rc.Nodes[i], ap)
 		}
 	}
