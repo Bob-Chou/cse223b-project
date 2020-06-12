@@ -1,6 +1,7 @@
 package ring
 
 import (
+	"chord/db"
 	"net/rpc"
 	"strings"
 	"sync"
@@ -62,6 +63,11 @@ func(c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
 	return nil
 }
 
+// Dial uses to check if the node is able to serve
+func(c *ChordClient) Dial() error {
+	return c.dial()
+}
+
 // GetID wraps Node.GetID
 func(c *ChordClient) GetID() uint64 {
 	return c.ID
@@ -112,6 +118,36 @@ func(c *ChordClient) Previous(id uint64, found *NodeInfo) error {
 	return c.rpc(name, id, found)
 }
 
+// Get wraps the RPC interface of NodeEntry.Get
+func(c *ChordClient) Get(k string, v *string) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Get"
+	return c.rpc(name, k, v)
+}
+
+func(c *ChordClient) Set(kv db.KV, ok *bool) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Set"
+	return c.rpc(name, kv, ok)
+}
+
+// Get wraps the RPC interface of NodeEntry.Get
+func(c *ChordClient) CGet(k string, v *string) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CGet"
+	return c.rpc(name, k, v)
+}
+
+func(c *ChordClient) CSet(kv db.KV, ok *bool) error {
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.CSet"
+	return c.rpc(name, kv, ok)
+}
+
 // NewChordClient returns a pointer to a ChordClient
 func NewChordClient(ip string, id uint64) *ChordClient {
 	return &ChordClient{
@@ -119,6 +155,13 @@ func NewChordClient(ip string, id uint64) *ChordClient {
 		conn:     nil,
 		connLock: sync.Mutex{},
 	}
+}
+
+func(c *ChordClient) Keys(p db.Pattern, list *db.List) error{
+	addrSplit := strings.Split(c.IP, ":")
+	port := addrSplit[len(addrSplit)-1]
+	name := port + "/NodeEntry.Keys"
+	return c.rpc(name, p, list)
 }
 
 type ChordServer struct {
@@ -148,6 +191,26 @@ func(c *ChordServer) Next(id uint64, next *NodeInfo) error {
 // Previous returns the predecessor, or returns error if has no predecessor
 func(c *ChordServer) Previous(id uint64, prev *NodeInfo) error {
 	return c.entry.Previous(id, prev)
+}
+
+func(c *ChordServer) Get(k string, v *string) error {
+  return c.entry.get(k, v)
+}
+
+func(c *ChordServer) Set(kv db.KV, ok *bool) error {
+	return c.entry.set(kv, ok)
+}
+
+func(c *ChordServer) Keys(p db.Pattern, list *db.List) error {
+	return c.entry.keys(p,list)
+}
+
+func(c *ChordServer) CGet(k string, v *string) error {
+	return c.entry.CGet(k, v)
+}
+
+func(c *ChordServer) CSet(kv db.KV, ok *bool) error {
+	return c.entry.CSet(kv, ok)
 }
 
 var _ NodeEntry = new(ChordClient)

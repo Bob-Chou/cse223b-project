@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/rpc"
 	"strings"
+	"sync"
 	"time"
 	"visual"
 )
@@ -24,13 +25,17 @@ var _ NodeEntry = new(Chord)
 var _ Node = new(Chord)
 
 // dummy var to check if Chord implements db.Storage interface
-var _ db.Storage = new(Chord)
+//var _ db.Storage = new(Chord)
 
 type Chord struct {
 	// basic information
 	NodeInfo
 	// introducer IP address to Chord
 	accessPoint Node
+	// own client
+	client *ChordClient
+	// owner client
+	owner *ChordClient
 	// successor
 	successor *ChordClient
 	// predecessor
@@ -41,6 +46,8 @@ type Chord struct {
 	chain []Node
 	// backend storage
 	storage db.Storage
+	// kv lock
+	kvLock   sync.Mutex
 }
 
 // GetID wraps Node.GetID
@@ -96,15 +103,34 @@ func(ch *Chord) Join(node Node) {
 // the successor about n.
 func(ch *Chord) Stabilize() {
 	var x NodeInfo
-	if e := ch.successor.Previous(ch.successor.GetID(), &x); e == nil {
-		if In(x.ID,ch.ID,ch.successor.GetID()){
-			log.Printf("[%v] sets successor %v", ch.GetID(), x.ID)
-			ch.successor = NewChordClient(x.IP,x.ID)
+	if e := ch.successor.Previous(ch.successor.ID, &x); e == nil {
+		xclient:=NewChordClient(x.IP,x.ID)
+		if In(x.ID,ch.ID,ch.successor.ID){
+			//lock kv service
+			ch.kvLock.Lock()
+			var l db.List
+			ch.successor.Keys(db.Pattern{"",""},&l)
+			for i:= range l.L {
+				k:=l.L[i]
+				kid:=hash.EncodeKey(k)
+				//need to migrate to x
+				if RIn(kid,ch.ID,x.ID){
+					log.Printf("Migrate key %v from node %v to node %v", kid,ch.successor.ID,x.ID)
+					var v string
+					ch.successor.Get(k,&v)
+					var ok bool
+					xclient.Set(db.KV{k,v},&ok)
+				}
+			}
+			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+			ch.successor = xclient
 			visual.SendMessage(visual_addr, visual.ChordMsg{
 				Id:   ch.ID,
 				Verb: visual.SET_SUCC,
 				Value: fmt.Sprintf("%v", x.ID),
 			})
+			//unlock kv service
+			ch.kvLock.Unlock()
 		}
 	} else if !ErrNotFound.Equals(e) {
 		panic(e)
@@ -164,19 +190,83 @@ func(ch *Chord) PrecedingNode(id uint64) Node {
 	return nil
 }
 
+// get returns the value of specific key from underlying storage
+func(ch *Chord) get(k string, v* string) error {
+	return ch.storage.Get(k, v)
+}
+
+func(ch *Chord) set(kv db.KV, ok *bool) error {
+	return ch.storage.Set(kv, ok)
+}
+
+func(ch *Chord) keys(p db.Pattern, list *db.List) error {
+	return ch.storage.Keys(p, list)
+}
+
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
-	panic("todo")
+
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
+
+	// find the key ID of key k
+	Kid := hash.EncodeKey(k)
+	//Kid = Kid % 72
+
+	// find the owner of incoming id
+	// throw error if owner is dead
+	var nc NodeInfo
+	if e := ch.FindSuccessorVisual(Kid, &nc); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
+	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("get key[%v] with kid[%v] in node[%v]\n", k, Kid, nc.ID)
+
+	// complete get in owner node
+	if e := ch.owner.Get(k, v); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when doing get: %v", k, e))
+	}
+
+	return nil
 }
 
 // Set wraps the RPC interface db.Storage.Set
 func(ch *Chord) Set(kv db.KV, ok *bool) error {
-	panic("todo")
+	ch.kvLock.Lock()
+	defer ch.kvLock.Unlock()
+
+	// find the key ID of key k
+	Kid := hash.EncodeKey(kv.K)
+	//Kid = Kid % 72
+
+	// find the owner of incoming id
+	// throw error if owner is dead
+	var nc NodeInfo
+	if e := ch.FindSuccessorVisual(Kid, &nc); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
+	}
+	ch.owner = NewChordClient(nc.IP, nc.ID)
+	log.Printf("set key[%v] with kid[%v] in node[%v]\n", kv.K, Kid, nc.ID)
+
+	// complete set in owner node
+	if e := ch.owner.Set(kv, ok); e != nil {
+		panic(fmt.Errorf("[%v] encounter error when doing set: %v", Kid, e))
+	}
+
+	return nil
 }
 
 // Keys wraps the RPC interface db.Storage.Keys
 func(ch *Chord) Keys(p db.Pattern, list *db.List) error {
-	panic("todo")
+	return ch.storage.Keys(p, list)
+}
+
+func(ch *Chord) CGet(k string, v *string) error {
+	return ch.Get(k, v)
+}
+
+func(ch *Chord) CSet(kv db.KV, ok *bool) error {
+	return ch.Set(kv, ok)
 }
 
 // Notify wraps the RPC interface of NodeEntry.Notify
@@ -251,6 +341,17 @@ func(ch *Chord) FindSuccessorVisual(id uint64, found *NodeInfo) error {
 			Verb: visual.SET_HLGHT,
 			Value: "0",
 		})
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   found.ID,
+			Verb: visual.SET_HLGHT,
+			Value: "1",
+		})
+		<-time.After(time.Second)
+		visual.SendMessage(visual_addr, visual.ChordMsg{
+			Id:   found.ID,
+			Verb: visual.SET_HLGHT,
+			Value: "0",
+		})
 		return nil
 	}
 
@@ -269,11 +370,6 @@ func(ch *Chord) FindSuccessorVisual(id uint64, found *NodeInfo) error {
 	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
 	var ans NodeInfo
 	if e := redirect.FindSuccessorVisual(id, &ans); e !=nil {
-		visual.SendMessage(visual_addr, visual.ChordMsg{
-			Id:   ch.ID,
-			Verb: visual.SET_HLGHT,
-			Value: "0",
-		})
 		return e
 	}
 	*found = ans
