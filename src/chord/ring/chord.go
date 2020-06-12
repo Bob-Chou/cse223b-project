@@ -16,6 +16,8 @@ import (
 
 const (
 	visual_addr = "localhost:6008"
+	TimeOut  = 500 * time.Millisecond
+	NumBacks = 3
 )
 
 // dummy var to check if Chord implements NodeEntry interface
@@ -42,8 +44,8 @@ type Chord struct {
 	predecessor *ChordClient
 	// fingers list
 	fingers []Node
-	// r consecutive chord node for chain replication
-	chain []Node
+	// r consecutive chord nodes
+	successors []Node
 	// backend storage
 	storage db.Storage
 	// kv lock
@@ -81,7 +83,9 @@ func(ch *Chord) Join(node Node) {
 	RandomDelay(1000)
 	ch.predecessor = nil
 	var found NodeInfo
-    node.FindSuccessor(ch.ID, &found)
+    if e := node.FindSuccessor(ch.ID, &found); e != nil {
+    	panic(e)
+	}
     ch.successor = NewChordClient(found.IP,found.ID)
 	visual.SendMessage(visual_addr, visual.ChordMsg{
 		Id:   ch.ID,
@@ -102,41 +106,81 @@ func(ch *Chord) Join(node Node) {
 // Stabilize is called periodically to verify n's immediate successor and tell
 // the successor about n.
 func(ch *Chord) Stabilize() {
-	var x NodeInfo
-	if e := ch.successor.Previous(ch.successor.ID, &x); e == nil {
-		xclient:=NewChordClient(x.IP,x.ID)
-		if In(x.ID,ch.ID,ch.successor.ID){
-			//lock kv service
-			ch.kvLock.Lock()
-			var l db.List
-			ch.successor.Keys(db.Pattern{"",""},&l)
-			for i:= range l.L {
-				k:=l.L[i]
-				kid:=hash.EncodeKey(k)
-				//need to migrate to x
-				if RIn(kid,ch.ID,x.ID){
-					log.Printf("Migrate key %v from node %v to node %v", kid,ch.successor.ID,x.ID)
-					var v string
-					ch.successor.Get(k,&v)
-					var ok bool
-					xclient.Set(db.KV{k,v},&ok)
-				}
+	next := 0
+	for {
+		// fix successor
+		if !ch.Ping(ch.successor) {
+			if next >= len(ch.successors) {
+				break
 			}
-			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
-			ch.successor = xclient
-			visual.SendMessage(visual_addr, visual.ChordMsg{
-				Id:   ch.ID,
-				Verb: visual.SET_SUCC,
-				Value: fmt.Sprintf("%v", x.ID),
-			})
-			//unlock kv service
-			ch.kvLock.Unlock()
+			if ch.successors[next] != nil && ch.Ping(ch.successors[next]) {
+				log.Printf("[%v] update successor %v", ch.GetID(), ch.successors[next].GetID())
+				ch.successor = ch.successors[next].(*ChordClient)
+				visual.SendMessage(visual_addr, visual.ChordMsg{
+					Id:   ch.ID,
+					Verb: visual.SET_SUCC,
+					Value: fmt.Sprintf("%v", ch.successor.GetID()),
+				})
+			}
+			next++
+			continue
 		}
-	} else if !ErrNotFound.Equals(e) {
-		panic(e)
+
+		// update successor list
+		ch.FixSuccessorList()
+
+		var x NodeInfo
+		if e := ch.successor.Previous(ch.successor.ID, &x); e == nil {
+			xclient:=NewChordClient(x.IP,x.ID)
+			if In(x.ID,ch.ID,ch.successor.ID){
+				//lock kv service
+				ch.kvLock.Lock()
+				var l db.List
+				if ch.successor.Keys(db.Pattern{"",""},&l) != nil {
+					next = 0
+					continue
+				}
+				for i:= range l.L {
+					k:=l.L[i]
+					kid:=hash.EncodeKey(k)
+					//need to migrate to x
+					if RIn(kid,ch.ID,x.ID){
+						log.Printf("Migrate key %v from node %v to node %v", kid,ch.successor.ID,x.ID)
+						var v string
+						if ch.successor.Get(k,&v) != nil {
+							next = 0
+							continue
+						}
+						var ok bool
+						xclient.Set(db.KV{k,v},&ok)
+					}
+				}
+				log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+				ch.successor = xclient
+				visual.SendMessage(visual_addr, visual.ChordMsg{
+					Id:   ch.ID,
+					Verb: visual.SET_SUCC,
+					Value: fmt.Sprintf("%v", x.ID),
+				})
+				//unlock kv service
+				ch.kvLock.Unlock()
+			}
+		} else if !ErrNotFound.Equals(e) {
+			next = 0
+			continue
+		}
+
+		var ok bool
+		if ch.successor.Notify(&NodeInfo{ch.IP, ch.ID},&ok) != nil {
+			next = 0
+			continue
+		}
+
+		return
 	}
-	var ok bool
-    ch.successor.Notify(&NodeInfo{ch.IP, ch.ID},&ok)
+
+	// Cannot fix ring because all backup successors are dead
+	panic(ErrBrokenService)
 }
 
 // FixFingers is called periodically to refresh finger table entries
@@ -147,8 +191,7 @@ func(ch *Chord) FixFingers(i int) {
 
 	var found NodeInfo
 	if e := ch.FindSuccessor(ch.GetID()+uint64(1<<i), &found); e != nil {
-		// TODO: handle nodes leaving case here
-		panic(fmt.Errorf("[%v] encounter error when fix fingers: %v", ch.ID, e))
+		panic(e)
 	}
 
 	if ch.fingers[i] == nil || found.ID != ch.fingers[i].GetID() {
@@ -164,9 +207,7 @@ func(ch *Chord) CheckPredecessor() {
 		return
 	}
 	pre := ch.predecessor
-	var nc NodeInfo
-	if e := pre.FindSuccessor(pre.GetID(), &nc); e != nil {
-		// TODO: Add node leave logic here
+	if !ch.Ping(pre) {
 		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
 		ch.predecessor = nil
 	}
@@ -179,12 +220,26 @@ func(ch *Chord) PrecedingNode(id uint64) Node {
 	for i := len(ch.fingers) - 1; i > 0; i-- {
 		finger := ch.fingers[i]
 		if finger != nil && In(finger.GetID(), ch.GetID(), id) {
-			return finger
+			if ch.Ping(finger) {
+				return finger
+			}
 		}
 	}
 
+	// check backup list
+	for i := len(ch.successors) - 1; i >= 0; i-- {
+		if ch.successors[i] != nil && In(ch.successors[i].GetID(), ch.GetID(), id) {
+			if ch.Ping(ch.successors[i]) {
+				return ch.successors[i]
+			}
+		}
+	}
+
+	// check direct successor
 	if ch.successor != nil && In(ch.successor.GetID(), ch.GetID(), id) {
-		return ch.successor
+		if ch.Ping(ch.successor) {
+			return  ch.successor
+		}
 	}
 
 	return nil
@@ -294,24 +349,48 @@ func(ch *Chord) FindSuccessor(id uint64, found *NodeInfo) error {
 	id = id % (1 << len(ch.fingers))
 	//log.Printf("[%v] start to find successor of %v", ch.ID, id)
 
+	// check direct successor
 	if RIn(id, ch.GetID(), ch.successor.GetID()) {
-		*found = NodeInfo{
-			IP: ch.successor.GetIP(),
-			ID: ch.successor.GetID(),
+		if ch.Ping(ch.successor) {
+			*found = NodeInfo{
+				IP: ch.successor.GetIP(),
+				ID: ch.successor.GetID(),
+			}
+			return nil
 		}
-		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
-		return nil
 	}
 
-	redirect := ch.PrecedingNode(id)
-	if redirect == nil {
-		return ErrNotReady
+	// check backup list
+	for _, s := range ch.successors {
+		if s != nil && RIn(id, ch.GetID(), s.GetID()) {
+			if ch.Ping(s) {
+				*found = NodeInfo{
+					IP: s.GetIP(),
+					ID: s.GetID(),
+				}
+				return nil
+			}
+		}
 	}
 
 	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
 	var ans NodeInfo
-	if e := redirect.FindSuccessor(id, &ans); e !=nil {
-		return e
+	for {
+		redirect := ch.PrecedingNode(id)
+		if redirect == nil {
+			return ErrBrokenService
+		}
+
+		// returned node might have been dead when forward request to it
+		// therefore we need retry logic here
+		if e := redirect.FindSuccessor(id, &ans); e != nil {
+			if ErrBrokenService.Equals(e) {
+				return e
+			}
+			continue
+		}
+
+		break
 	}
 	*found = ans
 
@@ -336,32 +415,63 @@ func(ch *Chord) FindSuccessorVisual(id uint64, found *NodeInfo) error {
 	// wait for some time to for visualization
 	<-time.After(time.Second)
 
+	// check direct successor
 	if RIn(id, ch.GetID(), ch.successor.GetID()) {
-		*found = NodeInfo{
-			IP: ch.successor.GetIP(),
-			ID: ch.successor.GetID(),
+		if ch.Ping(ch.successor) {
+			*found = NodeInfo{
+				IP: ch.successor.GetIP(),
+				ID: ch.successor.GetID(),
+			}
+			//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
+			visual.SendMessage(visual_addr, visual.ChordMsg{
+				Id:   ch.ID,
+				Verb: visual.SET_HLGHT,
+				Value: "0",
+			})
+			visual.SendMessage(visual_addr, visual.ChordMsg{
+				Id:   found.ID,
+				Verb: visual.SET_HLGHT,
+				Value: "1",
+			})
+			<-time.After(time.Second)
+			visual.SendMessage(visual_addr, visual.ChordMsg{
+				Id:   found.ID,
+				Verb: visual.SET_HLGHT,
+				Value: "0",
+			})
+			return nil
 		}
-		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
-		visual.SendMessage(visual_addr, visual.ChordMsg{
-			Id:   ch.ID,
-			Verb: visual.SET_HLGHT,
-			Value: "0",
-		})
-		visual.SendMessage(visual_addr, visual.ChordMsg{
-			Id:   found.ID,
-			Verb: visual.SET_HLGHT,
-			Value: "1",
-		})
-		<-time.After(time.Second)
-		visual.SendMessage(visual_addr, visual.ChordMsg{
-			Id:   found.ID,
-			Verb: visual.SET_HLGHT,
-			Value: "0",
-		})
-		return nil
 	}
 
-	redirect := ch.PrecedingNode(id)
+	// check backup list
+	for _, s := range ch.successors {
+		if s != nil && RIn(id, ch.GetID(), s.GetID()) {
+			if ch.Ping(s) {
+				*found = NodeInfo{
+					IP: s.GetIP(),
+					ID: s.GetID(),
+				}
+				//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
+				visual.SendMessage(visual_addr, visual.ChordMsg{
+					Id:   ch.ID,
+					Verb: visual.SET_HLGHT,
+					Value: "0",
+				})
+				visual.SendMessage(visual_addr, visual.ChordMsg{
+					Id:   found.ID,
+					Verb: visual.SET_HLGHT,
+					Value: "1",
+				})
+				<-time.After(time.Second)
+				visual.SendMessage(visual_addr, visual.ChordMsg{
+					Id:   found.ID,
+					Verb: visual.SET_HLGHT,
+					Value: "0",
+				})
+				return nil
+			}
+		}
+	}
 
 	visual.SendMessage(visual_addr, visual.ChordMsg{
 		Id:   ch.ID,
@@ -369,16 +479,27 @@ func(ch *Chord) FindSuccessorVisual(id uint64, found *NodeInfo) error {
 		Value: "0",
 	})
 
-	if redirect == nil {
-		return ErrNotReady
-	}
-
 	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
 	var ans NodeInfo
-	if e := redirect.FindSuccessorVisual(id, &ans); e !=nil {
-		return e
+	for {
+		redirect := ch.PrecedingNode(id)
+		if redirect == nil {
+			return ErrBrokenService
+		}
+
+		// returned node might have been dead when forward request to it
+		// therefore we need retry logic here
+		if e := redirect.FindSuccessor(id, &ans); e != nil {
+			if ErrBrokenService.Equals(e) {
+				return e
+			}
+			continue
+		}
+
+		break
 	}
 	*found = ans
+
 	return nil
 }
 
@@ -401,7 +522,7 @@ func(ch *Chord) Next(id uint64, found *NodeInfo) error {
 	return nil
 }
 
-// Next wraps the RPC interface of NodeEntry.Previous
+// Previous wraps the RPC interface of NodeEntry.Previous
 func(ch *Chord) Previous(id uint64, found *NodeInfo) error {
 
 	if id != ch.GetID() {
@@ -422,6 +543,47 @@ func(ch *Chord) Previous(id uint64, found *NodeInfo) error {
 	return nil
 }
 
+// Ping test whether a Chord node is dead
+func(ch *Chord) Ping(n Node) bool {
+	rtn := make(chan error)
+	go func() {
+		var nc NodeInfo
+		rtn <- n.Next(n.GetID(), &nc)
+	}()
+
+	select {
+	case e := <-rtn:
+		return e == nil || ErrNotFound.Equals(e) || ErrWrongID.Equals(e)
+	case <-time.After(TimeOut):
+		return false
+	}
+}
+
+// FixSuccessorList updates successors by walking from the direct successor and
+// fetch for all backup successors
+func(ch *Chord) FixSuccessorList() {
+	var cur Node
+	cur = ch.successor
+
+	for i := 0; i < len(ch.successors); i++ {
+		var next NodeInfo
+		if cur != nil && cur.Next(cur.GetID(), &next) == nil {
+			if ch.successors[i] == nil || next.ID != ch.successors[i].GetID() {
+				log.Printf("[%v] sets successor list @%v: %v", ch.GetID(), i, next.ID)
+				ch.successors[i] = NewChordClient(next.IP, next.ID)
+			}
+		}
+		cur = ch.successors[i]
+	}
+
+	return
+}
+
+// Successors returns the successor list of current node
+func(ch *Chord) Successors() []Node {
+	return append([]Node{ch.successor}, ch.successors...)
+}
+
 // Init completes all preparation logic, when it returns, it should be ready to
 // provide KV service. It also returns the encountered error if any
 func(ch *Chord) Init() error {
@@ -430,7 +592,7 @@ func(ch *Chord) Init() error {
 
 // Serve is a blocking call to serve, it never returns.  It also returns the
 // encountered error if any
-func(ch *Chord) Serve(ready chan<- bool) error {
+func(ch *Chord) Serve(ready chan<- bool, kill <-chan bool) error {
 	catch := make(chan error)
 	quit := make(chan bool)
 	done := make(chan bool, 1)
@@ -444,6 +606,7 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 
 	// Chord RPC services
 	go func() {
+		barrier := make(chan bool)
 		chordServer := &ChordServer{ch}
 		addrSplit := strings.Split(ch.IP, ":")
 		port := addrSplit[len(addrSplit)-1]
@@ -463,14 +626,47 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 
 		done <- true
 
-		for {
-			conn, e := l.Accept()
-			if e != nil {
-				catch <- e
-				return
+		// handle incoming RPC calls
+		go func() {
+			for {
+				conn, e := l.Accept()
+				if e != nil {
+					select {
+					case <-quit:
+					default:
+						catch <- e
+					}
+					return
+				}
+				go func() {
+					done := make(chan bool, 1)
+					go func() {
+						rpc.ServeConn(conn)
+						close(done)
+					}()
+					go func() {
+						select {
+						case <-done:
+						case <-quit:
+							conn.Close()
+						}
+					}()
+					<-done
+				}()
 			}
-			go rpc.ServeConn(conn)
-		}
+		}()
+
+		// close RPC listener if receive quit signal
+		go func() {
+			<-quit
+			if e := l.Close(); e != nil {
+				log.Println(e)
+				catch <- e
+			}
+			close(barrier)
+		}()
+
+		<-barrier
 	}()
 
 	go func() {
@@ -521,10 +717,16 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	<-done
 	log.Printf("[%v] service ready", ch.ID)
 	ready <- true
-	e := <-catch
-	close(quit)
 
-	return e
+	select {
+	case <-kill:
+		close(quit)
+		log.Printf("[%v] is killed by outside", ch.ID)
+		return nil
+	case e := <-catch:
+		close(quit)
+		return e
+	}
 }
 
 // NewChord create a new chord node and return the pointer to it
@@ -541,7 +743,7 @@ func NewChord(ip, accessIP string, storage db.Storage) *Chord {
 		NodeInfo:    NodeInfo{ip, id},
 		accessPoint: ap,
 		fingers:     make([]Node, hash.MaxHashBits),
-		chain:       make([]Node, 3),
+		successors:  make([]Node, NumBacks),
 		storage:     storage,
 	}
 	return &ch
@@ -566,6 +768,7 @@ func RIn(id, nid1, nid2 uint64) bool {
 }
 
 func RandomDelay(maxMilSec int) {
+	rand.Seed(time.Now().UTC().UnixNano())
 	if maxMilSec <= 0 {
 		return
 	}

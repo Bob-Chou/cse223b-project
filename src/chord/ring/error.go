@@ -6,9 +6,11 @@ import (
 )
 
 const (
-	CodeNotFound string = "301001"
-	CodeNotReady string = "301002"
-	CodeWrongID  string = "301003"
+	CodeNotFound      string = "301001"
+	CodeNotReady      string = "301002"
+	CodeWrongID       string = "301003"
+	CodeBrokenService string = "301004"
+	CodeTimeOut       string = "301005"
 )
 
 var codeReg = regexp.MustCompile("^\\[\\d{6}\\]")
@@ -46,4 +48,8 @@ var (
 	ErrNotReady = NewChordError(CodeNotReady, "node not ready")
 	// ErrWrongID is the shared object of WrongIDError
 	ErrWrongID = NewChordError(CodeWrongID, "wrong/invalid id")
+	// ErrBrokenService is the shared object of BrokenServiceError
+	ErrBrokenService = NewChordError(CodeBrokenService, "service is broken")
+	// ErrTimeOut is the shared object of TimeOutError
+	ErrTimeOut = NewChordError(CodeTimeOut, "network communication time out")
 )

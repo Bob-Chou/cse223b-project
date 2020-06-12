@@ -1,7 +1,6 @@
 package test
 
 import (
-	"chord/db"
 	"chord/hash"
 	"chord/ring"
 	"fmt"
@@ -10,51 +9,6 @@ import (
 	"testing"
 	"time"
 )
-
-func newNode(
-	ip string,
-	id uint64,
-	join string,
-	ready chan<- bool,
-	catch chan<- error,
-) *ring.Chord {
-	// first Chord Node
-	ch := ring.NewChord(ip, join, db.NewStore())
-	ch.ID = id
-
-	go func() {
-		if e := ch.Init(); e != nil {
-			catch <- e
-			return
-		}
-		if e := ch.Serve(ready); e != nil {
-			catch <- e
-			return
-		}
-	}()
-
-	return ch
-}
-
-func TestVisual(t *testing.T) {
-	log.SetOutput(ioutil.Discard)
-	catch := make(chan error)
-	ready := make(chan bool)
-
-	// first Chord Node
-	ch0 := newNode("localhost:1234", 0, "", ready, catch)
-	<-ready
-	for i := 1; i < 10; i++ {
-		<-time.After(500 * time.Millisecond)
-		newNode(fmt.Sprintf("localhost:%v", 1234+i), uint64(i*6), "localhost:1234", ready, catch)
-		<-ready
-	}
-	<-time.After(15 * time.Second)
-	var found ring.NodeInfo
-	ch0.FindSuccessorVisual(50, &found)
-	<-time.After(2 * time.Second)
-	ch0.FindSuccessorVisual(63, &found)
-}
 
 func TestNodeCreate(t *testing.T) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
@@ -292,4 +246,163 @@ func TestLookup(t *testing.T) {
 	ne(ch3.FindSuccessor(48, &found), t)
 	log.Printf("lookup %v, found %v", 48, found.ID)
 	as(found.ID == 48, t)
+}
+
+func TestSuccessorList(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	chords := make([]*ring.Chord, ring.NumBacks)
+	catch := make(chan error)
+	ready := make(chan bool)
+	ticker := time.NewTicker(10 * time.Second)
+
+	chords[0] = newNode("localhost:1234", 0, "", ready, catch)
+	<-ready
+
+	for i := 1; i < len(chords); i++ {
+		ip := fmt.Sprintf("localhost:%v", 1234+i)
+		chords[i] = newNode(ip, uint64(i), chords[0].IP, ready, catch)
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		for i := 1; i < len(chords); i++ {
+			<-ready
+		}
+		done <- true
+	}()
+	select {
+	case <-ticker.C:
+		ticker.Stop()
+		t.Fatal("service not ready, timed out")
+	case <-done:
+	case e := <-catch:
+		t.Fatal(e)
+	}
+
+	<-time.After(20*time.Second)
+
+	for i := 0; i < len(chords); i++ {
+		ch := chords[i]
+		nodes := ch.Successors()
+		for j, node := range nodes {
+			t.Logf("[%v] successors[%v] is %v", ch.ID, j, node.GetID())
+			as(node.GetID() == uint64((i + j + 1) % len(chords)), t)
+		}
+	}
+}
+
+func TestKillChord(t *testing.T) {
+	catch := make(chan error)
+	ready := make(chan bool)
+	kill := make(chan bool, 1)
+	ticker := time.NewTicker(10 * time.Second)
+
+	ch0 := newInteractNode("localhost:5678", 376, "", ready, catch, kill)
+	client := ring.NewChordClient(ch0.IP, ch0.ID)
+	select {
+	case <-ticker.C:
+		ticker.Stop()
+		t.Fatal("service not ready, timed out")
+	case <-ready:
+	case e := <-catch:
+		t.Fatal(e)
+	}
+
+	var found ring.NodeInfo
+	ne(client.FindSuccessor(0, &found), t)
+
+	kill <- true
+	<-time.After(1 * time.Second)
+
+	e := client.FindSuccessor(0, &found)
+	er(e, t)
+	as(!ch0.Ping(client), t)
+}
+
+func TestFixSuccessor(t *testing.T) {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	chords := make([]*ring.Chord, ring.NumBacks+1)
+	catch := make(chan error)
+	ready := make(chan bool)
+	ticker := time.NewTicker(10 * time.Second)
+
+	signals := make([]chan bool, len(chords))
+	for i := 0; i < len(signals); i++ {
+		signals[i] = make(chan bool, 1)
+	}
+
+	chords[0] = newInteractNode("localhost:1234", 0, "", ready, catch, signals[0])
+	<-ready
+
+	for i := 1; i < len(chords); i++ {
+		ip := fmt.Sprintf("localhost:%v", 1234+i)
+		chords[i] = newInteractNode(ip, uint64(i), chords[0].IP, ready, catch, signals[i])
+	}
+
+	done := make(chan bool, 1)
+	go func() {
+		for i := 1; i < len(chords); i++ {
+			<-ready
+		}
+		done <- true
+	}()
+	select {
+	case <-ticker.C:
+		ticker.Stop()
+		t.Fatal("service not ready, timed out")
+	case <-done:
+	case e := <-catch:
+		t.Fatal(e)
+	}
+
+	<-time.After(15*time.Second)
+
+	for i := 0; i < len(chords); i++ {
+		ch := chords[i]
+		nodes := ch.Successors()
+		for j, node := range nodes {
+			t.Logf("[%v] successors[%v] is %v", ch.ID, j, node.GetID())
+			as(node.GetID() == uint64((i + j + 1) % len(chords)), t)
+		}
+	}
+
+	signals[len(signals)-1] <- true
+	signals[len(signals)-2] <- true
+
+	<-time.After(5*time.Second)
+
+	for i := 0; i < len(chords)-2; i++ {
+		ch := chords[i]
+		nodes := ch.Successors()
+		for j, node := range nodes {
+			t.Logf("[%v] successors[%v] is %v", ch.ID, j, node.GetID())
+			as(node.GetID() == uint64((i + j + 1) % (len(chords)-2)), t)
+		}
+	}
+
+	for i := 0; i < len(chords)-2; i++ {
+		var prev, next ring.NodeInfo
+		ch := chords[i]
+
+		// check ring integrity
+		var ans uint64
+		ne(ch.Next(ch.ID, &next), t)
+		ans = uint64((i+1)%(len(chords)-2))
+		t.Logf("[%v]'s successor should be %v, get %v", ch.ID, ans, next.ID)
+		as(next.ID == ans, t)
+		ne(ch.Previous(ch.ID, &prev), t)
+		ans = uint64((i-1+(len(chords)-2))%(len(chords)-2))
+		t.Logf("[%v]'s predecessor should be %v, get %v", ch.ID, ans, prev.ID)
+		as(prev.ID == ans, t)
+
+		// check functionality correctness
+		for j := 0; j < len(chords)-2; j++ {
+			var found ring.NodeInfo
+			ne(ch.FindSuccessor(uint64(j), &found), t)
+			t.Logf("[%v] lookup %v should be %v, get %v", ch.ID, j, j, found.ID)
+			as(found.ID == uint64(j), t)
+		}
+	}
 }
