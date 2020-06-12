@@ -12,6 +12,7 @@ const (
     SET_SUCC = go_protoc.ChordMessage_SET_SUCC
     SET_PRED = go_protoc.ChordMessage_SET_PRED
     SET_HLGHT = go_protoc.ChordMessage_SET_HLGHT
+    SET_KEY = go_protoc.ChordMessage_SET_KEY
     NEWS = go_protoc.ChordMessage_NEWS
 )
 
@@ -19,6 +20,7 @@ type ChordMsg struct {
     Id uint64
     Verb go_protoc.ChordMessage_ChordVerb
     Value string
+    Key string
 }
 
 func SendMessage(addr string, msg ChordMsg) {
@@ -33,5 +35,6 @@ func SendMessage(addr string, msg ChordMsg) {
         Nid:   msg.Id,
         Verb:  msg.Verb,
         Value: msg.Value,
+        Key:   msg.Key,
     })
 }

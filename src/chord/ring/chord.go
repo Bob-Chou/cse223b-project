@@ -196,6 +196,12 @@ func(ch *Chord) get(k string, v* string) error {
 }
 
 func(ch *Chord) set(kv db.KV, ok *bool) error {
+	visual.SendMessage(visual_addr, visual.ChordMsg{
+		Id:   ch.ID,
+		Verb: visual.SET_KEY,
+		Value: fmt.Sprintf("%v", kv.V),
+		Key: fmt.Sprintf("%v", kv.K),
+	})
 	return ch.storage.Set(kv, ok)
 }
 
