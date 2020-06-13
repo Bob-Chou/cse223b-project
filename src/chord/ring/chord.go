@@ -54,6 +54,10 @@ func(ch *Chord) GetIP() string {
 	return ch.IP
 }
 
+func(ch *Chord) GetFinger(i int) uint64 {
+	return ch.fingers[i].GetID()
+}
+
 // Create creates a new Chord ring
 func(ch *Chord) Create() {
 	ch.predecessor = nil
@@ -63,8 +67,11 @@ func(ch *Chord) Create() {
 // Join joins a Chord ring containing the given node
 func(ch *Chord) Join(node Node) {
 	ch.predecessor = nil
-	var found NodeInfo
-    node.FindSuccessor(ch.ID, &found)
+	var found CountHop
+	var id HopIn
+	id.ID = ch.ID
+	id.Count = 0
+    node.FindSuccessor(id, &found)
     ch.successor = NewChordClient(found.IP,found.ID)
 }
 
@@ -91,7 +98,11 @@ func(ch *Chord) Stabilize() {
 					xclient.Set(db.KV{k,v},&ok)
 				}
 			}
-			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+			//log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+			// close connection and free tcp file descriptor
+			if ch.successor != nil {
+				ch.successor.Reset()
+			}
 			ch.successor = xclient
 			//unlock kv service
 			ch.kvLock.Unlock()
@@ -109,14 +120,21 @@ func(ch *Chord) FixFingers(i int) {
 		panic(fmt.Sprintf("[%v] FixFingers index error", ch.ID))
 	}
 
-	var found NodeInfo
-	if e := ch.FindSuccessor(ch.GetID()+uint64(1<<i), &found); e != nil {
+	var found CountHop
+	var id HopIn
+	id.ID = ch.GetID()+uint64(1<<i)
+	id.Count = 0
+	if e := ch.FindSuccessor(id, &found); e != nil {
 		// TODO: handle nodes leaving case here
 		panic(fmt.Errorf("[%v] encounter error when fix fingers: %v", ch.ID, e))
 	}
 
 	if ch.fingers[i] == nil || found.ID != ch.fingers[i].GetID() {
-		log.Printf("[%v] has new finger[%v] %v", ch.GetID(), i, found.ID)
+		//log.Printf("[%v] has new finger[%v] %v", ch.GetID(), i, found.ID)
+		// close connection and free tcp file descriptor
+		if ch.fingers[i]!= nil{
+			ch.fingers[i].(*ChordClient).Reset()
+		}
 		ch.fingers[i] = NewChordClient(found.IP, found.ID)
 	}
 }
@@ -128,10 +146,17 @@ func(ch *Chord) CheckPredecessor() {
 		return
 	}
 	pre := ch.predecessor
-	var nc NodeInfo
-	if e := pre.FindSuccessor(pre.GetID(), &nc); e != nil {
+	var nc CountHop
+	var id HopIn
+	id.ID = pre.GetID()
+	id.Count = 0
+	if e := pre.FindSuccessor(id, &nc); e != nil {
 		// TODO: Add node leave logic here
 		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
+		// close connection and free tcp file descriptor
+		if ch.predecessor != nil{
+			ch.predecessor.Reset()
+		}
 		ch.predecessor = nil
 	}
 }
@@ -179,8 +204,11 @@ func(ch *Chord) Get(k string, v *string) error {
 
 	// find the owner of incoming id
 	// throw error if owner is dead
-	var nc NodeInfo
-	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+	var nc CountHop
+	var id HopIn
+	id.ID = Kid
+	id.Count = 0
+	if e := ch.FindSuccessor(id, &nc); e != nil {
 		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
 	}
 	ch.owner = NewChordClient(nc.IP, nc.ID)
@@ -190,6 +218,8 @@ func(ch *Chord) Get(k string, v *string) error {
 	if e := ch.owner.Get(k, v); e != nil {
 		panic(fmt.Errorf("[%v] encounter error when doing get: %v", k, e))
 	}
+	// close connection and free tcp file descriptor
+	ch.owner.Reset()
 
 	return nil
 }
@@ -205,8 +235,11 @@ func(ch *Chord) Set(kv db.KV, ok *bool) error {
 
 	// find the owner of incoming id
 	// throw error if owner is dead
-	var nc NodeInfo
-	if e := ch.FindSuccessor(Kid, &nc); e != nil {
+	var nc CountHop
+	var id HopIn
+	id.ID = Kid
+	id.Count = 0
+	if e := ch.FindSuccessor(id, &nc); e != nil {
 		panic(fmt.Errorf("[%v] encounter error when finding owner node: %v", Kid, e))
 	}
 	ch.owner = NewChordClient(nc.IP, nc.ID)
@@ -236,37 +269,46 @@ func(ch *Chord) CSet(kv db.KV, ok *bool) error {
 // Notify wraps the RPC interface of NodeEntry.Notify
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
-		log.Printf("[%v] sets predecessor %v", ch.GetID(), node.ID)
+		//log.Printf("[%v] sets predecessor %v", ch.GetID(), node.ID)
+		// close connection and free tcp file descriptor
+		if ch.predecessor != nil {
+			ch.predecessor.Reset()
+		}
 		ch.predecessor = NewChordClient(node.IP, node.ID)
 	}
 	return nil
 }
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
-func(ch *Chord) FindSuccessor(id uint64, found *NodeInfo) error {
-	id = id % (1 << len(ch.fingers))
+func(ch *Chord) FindSuccessor(id HopIn, found *CountHop) error {
+	//log.Printf("Current hop count [%v]", found.Count)
+
+	found.Count = id.Count
+
+	id.ID = id.ID % (1 << len(ch.fingers))
 	//log.Printf("[%v] start to find successor of %v", ch.ID, id)
 
-	if RIn(id, ch.GetID(), ch.successor.GetID()) {
-		*found = NodeInfo{
+	if RIn(id.ID, ch.GetID(), ch.successor.GetID()) {
+		found.NodeInfo = NodeInfo{
 			IP: ch.successor.GetIP(),
 			ID: ch.successor.GetID(),
 		}
-		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id, found.ID)
+		//log.Printf("[%v] successor of %v has been found: %v", ch.ID, id.ID, found.ID)
 		return nil
 	}
 
-	redirect := ch.PrecedingNode(id)
+	redirect := ch.PrecedingNode(id.ID)
 	if redirect == nil {
 		return ErrNotReady
 	}
 
-	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id, redirect.GetID())
-	var ans NodeInfo
-	if e := redirect.FindSuccessor(id, &ans); e !=nil {
+	//log.Printf("[%v] redirect FindSuccessor(%v) to %v", ch.ID, id.ID, redirect.GetID())
+	id.Count = id.Count+1
+
+	//log.Printf("Redirect with count [%v]", found.Count)
+	if e := redirect.FindSuccessor(id, found); e !=nil {
 		return e
 	}
-	*found = ans
 
 	return nil
 }
@@ -405,7 +447,7 @@ func(ch *Chord) Serve(ready chan<- bool) error {
 	}()
 
 	<-done
-	log.Printf("[%v] service ready", ch.ID)
+	//log.Printf("[%v] service ready", ch.ID)
 	ready <- true
 	e := <-catch
 	close(quit)

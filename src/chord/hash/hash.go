@@ -6,7 +6,7 @@ import (
 
 const (
 	// MaxHashBits is the max bit of hash result
-	MaxHashBits int = 6
+	MaxHashBits int = 16
 )
 
 // EncodeKey takes a key and hash to uint64

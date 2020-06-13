@@ -42,6 +42,7 @@ func(c *ChordClient) call(call string, args interface{}, ret interface{}) error 
 	return e
 }
 
+
 func(c *ChordClient) rpc(name string, args interface{}, ret interface{}) error {
 	if e := c.dial(); e != nil {
 		return e
@@ -68,6 +69,11 @@ func(c *ChordClient) Dial() error {
 	return c.dial()
 }
 
+// Reset help close tcp connection and free file descriptor
+func(c *ChordClient) Reset() {
+	c.reset()
+}
+
 // GetID wraps Node.GetID
 func(c *ChordClient) GetID() uint64 {
 	return c.ID
@@ -87,7 +93,7 @@ func(c *ChordClient) Notify(node *NodeInfo, ok *bool) error {
 }
 
 // FindSuccessor wraps the RPC interface of NodeEntry.FindSuccessor
-func(c *ChordClient) FindSuccessor(id uint64, found *NodeInfo) error {
+func(c *ChordClient) FindSuccessor(id HopIn, found *CountHop) error {
 	addrSplit := strings.Split(c.IP, ":")
 	port := addrSplit[len(addrSplit)-1]
 	name := port + "/NodeEntry.FindSuccessor"
@@ -161,7 +167,7 @@ type ChordServer struct {
 }
 
 // FindSuccessor is called to find the successor of a given id
-func(c *ChordServer) FindSuccessor(id uint64, found *NodeInfo) error {
+func(c *ChordServer) FindSuccessor(id HopIn, found *CountHop) error {
 	return c.entry.FindSuccessor(id, found)
 }
 

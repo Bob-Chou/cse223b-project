@@ -9,11 +9,19 @@ type NodeInfo struct {
 	IP string
 	ID uint64
 }
+type CountHop struct{
+	NodeInfo
+	Count int
+}
+type HopIn struct{
+	ID uint64
+	Count int
+}
 
 // NodeEntry defines all RPC interfaces of a node
 type NodeEntry interface {
 	// FindSuccessor is called to find the successor of a given id
-	FindSuccessor(id uint64, found *NodeInfo) error
+	FindSuccessor(id HopIn, found *CountHop) error
 	// Notify is called when the given node thinks it might be our predecessor
 	Notify(node *NodeInfo, ok *bool) error
 	// Next returns the successor, or returns error if has no successor
