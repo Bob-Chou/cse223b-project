@@ -68,6 +68,11 @@ func(c *ChordClient) Dial() error {
 	return c.dial()
 }
 
+// Reset help close tcp connection and free file descriptor
+func(c *ChordClient) Reset() {
+	c.reset()
+}
+
 // GetID wraps Node.GetID
 func(c *ChordClient) GetID() uint64 {
 	return c.ID
