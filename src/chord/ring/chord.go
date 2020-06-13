@@ -92,6 +92,10 @@ func(ch *Chord) Stabilize() {
 				}
 			}
 			log.Printf("[%v] sets successor %v", ch.ID, x.ID)
+			// close connection and free tcp file descriptor
+			if ch.successor != nil {
+				ch.successor.Reset()
+			}
 			ch.successor = xclient
 			//unlock kv service
 			ch.kvLock.Unlock()
@@ -117,6 +121,10 @@ func(ch *Chord) FixFingers(i int) {
 
 	if ch.fingers[i] == nil || found.ID != ch.fingers[i].GetID() {
 		log.Printf("[%v] has new finger[%v] %v", ch.GetID(), i, found.ID)
+		// close tcp connection and free file descriptor
+		if ch.fingers[i] != nil {
+			ch.fingers[i].(*ChordClient).Reset()
+		}
 		ch.fingers[i] = NewChordClient(found.IP, found.ID)
 	}
 }
@@ -132,6 +140,10 @@ func(ch *Chord) CheckPredecessor() {
 	if e := pre.FindSuccessor(pre.GetID(), &nc); e != nil {
 		// TODO: Add node leave logic here
 		log.Printf("[%v] %v (id %v) dies", ch.ID, pre.GetIP(), pre.GetID())
+		// close tcp connection and free file descriptor
+		if ch.predecessor != nil {
+			ch.predecessor.Reset()
+		}
 		ch.predecessor = nil
 	}
 }
@@ -169,7 +181,6 @@ func(ch *Chord) keys(p db.Pattern, list *db.List) error {
 
 // Get wraps the RPC interface db.Storage.Get
 func(ch *Chord) Get(k string, v *string) error {
-  
 	ch.kvLock.Lock()
 	defer ch.kvLock.Unlock()
 
@@ -190,6 +201,9 @@ func(ch *Chord) Get(k string, v *string) error {
 	if e := ch.owner.Get(k, v); e != nil {
 		panic(fmt.Errorf("[%v] encounter error when doing get: %v", k, e))
 	}
+
+	// close tcp connection and free file descriptor
+	ch.owner.Reset()
 
 	return nil
 }
@@ -237,6 +251,10 @@ func(ch *Chord) CSet(kv db.KV, ok *bool) error {
 func(ch *Chord) Notify(node *NodeInfo, ok *bool) error {
 	if (ch.predecessor == nil)||(In(node.ID,ch.predecessor.GetID(),ch.ID)){
 		log.Printf("[%v] sets predecessor %v", ch.GetID(), node.ID)
+		// close connection and free tcp file descriptor
+		if ch.predecessor != nil {
+			ch.predecessor.Reset()
+		}
 		ch.predecessor = NewChordClient(node.IP, node.ID)
 	}
 	return nil
