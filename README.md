@@ -42,7 +42,7 @@ chord-client 2 get a
 ## Visualize the Chord!
 We support a visualizer for Chord, if you are interested in how Chord works. Currently we haven't integrated the code to master, so you must switch to the branch `demo` to enable this feature.
 ```shell
-git branch demo
+git checkout demo
 ```
 
 The visualizer depends on `ProtoBuf v3` of both Golang and Python. Therefore you may want to `make` to get required library.
